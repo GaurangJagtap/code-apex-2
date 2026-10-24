@@ -5,9 +5,9 @@ from backend.app.llm.provider import LLMProvider
 
 class TesterAgent:
     """
-    Tester Agent: Consumes the application requirements and Scout observations,
+    Tester Agent: Consumes application requirements, baselines, and Scout observations,
     synthesizes structured test plans, prioritizes candidates using the Curiosity Engine,
-    and returns validated execution targets.
+    and returns validated execution targets with clear provenance and expectation sources.
     """
     def __init__(self, curiosity_engine: CuriosityEngine, llm_provider: LLMProvider):
         self.curiosity_engine = curiosity_engine
@@ -35,14 +35,17 @@ class TesterAgent:
 
         candidates = []
 
-        # 1. Navigation Test
+        # 1. Navigation & Initial Layout Rendering
         candidates.append({
             "test_id": "TEST-01",
             "title": "Application Navigation and Initial Layout Rendering",
-            "category": "Navigation",
+            "objective": "Verify document root mounts, stylesheet assets resolve, and primary view is displayed without fatal errors.",
+            "category": "Functional behavior and navigation",
             "priority": "High",
             "path": clean_url,
+            "expectation_source": "deterministic_invariant",
             "preconditions": "Target web application is accessible and serving HTTP requests.",
+            "test_data": {"url": clean_url},
             "steps": [
                 {"action": "goto", "value": clean_url, "description": "Navigate to target application root URL"},
                 {"action": "wait", "value": "600", "description": "Wait for layout hydration and DOM completion"},
@@ -63,10 +66,13 @@ class TesterAgent:
             candidates.append({
                 "test_id": "TEST-02",
                 "title": f"Interactive Control Verification: '{btn_text[:30]}'",
-                "category": "Functional testing",
+                "objective": f"Verify control '{btn_text[:25]}' dispatches events cleanly without runtime exceptions.",
+                "category": "Functional behavior and navigation",
                 "priority": "High",
                 "path": clean_url,
+                "expectation_source": "user_requirement",
                 "preconditions": "Application page contains clickable UI elements.",
+                "test_data": {"selector": selector, "label": btn_text},
                 "steps": [
                     {"action": "goto", "value": clean_url, "description": "Open landing page"},
                     {"action": "wait", "value": "500", "description": "Wait for interactive elements to be ready"},
@@ -85,10 +91,13 @@ class TesterAgent:
             candidates.append({
                 "test_id": "TEST-02",
                 "title": "Internal Route Navigation via Discovered Links",
-                "category": "Navigation",
+                "objective": f"Validate reachable route resolution for '{target_link}'.",
+                "category": "Functional behavior and navigation",
                 "priority": "High",
                 "path": target_link,
+                "expectation_source": "deterministic_invariant",
                 "preconditions": "Scout discovered internal reachable routes.",
+                "test_data": {"link": target_link},
                 "steps": [
                     {"action": "goto", "value": clean_url, "description": "Navigate to base application URL"},
                     {"action": "goto", "value": target_link, "description": f"Navigate to discovered internal route '{target_link}'"},
@@ -117,10 +126,13 @@ class TesterAgent:
             candidates.append({
                 "test_id": "TEST-03",
                 "title": "Form Input Processing & Data Entry Validation",
-                "category": "Form validation",
+                "objective": "Verify input controls accept keyboard input without UI degradation or text truncation.",
+                "category": "Form validation and input boundaries",
                 "priority": "High",
                 "path": clean_url,
+                "expectation_source": "business_rule",
                 "preconditions": "Form controls are visible and accept keyboard input.",
+                "test_data": {"inputs_count": min(len(inputs), 2)},
                 "steps": inp_steps,
                 "assertions": [
                     {"type": "element_visible", "target": "body", "expected": "", "message": "Verify form inputs process data safely"}
@@ -129,14 +141,41 @@ class TesterAgent:
                 "regression_candidate": True
             })
 
-        # 4. Negative Boundary Testing (404 / Missing Route Handling)
+        # 4. State Persistence & Refresh Recovery
         candidates.append({
             "test_id": "TEST-04",
+            "title": "Session State Recovery & Page Reload Invariant",
+            "objective": "Verify application handles transient refresh/reconnection gracefully and maintains session stability.",
+            "category": "Session, recovery, and interrupted workflows",
+            "priority": "Medium",
+            "path": clean_url,
+            "expectation_source": "deterministic_invariant",
+            "preconditions": "Target view renders interactive DOM elements.",
+            "test_data": {"url": clean_url},
+            "steps": [
+                {"action": "goto", "value": clean_url, "description": "Open base application view"},
+                {"action": "wait", "value": "400", "description": "Allow initial load to settle"},
+                {"action": "refresh", "description": "Simulate browser page refresh to evaluate session recovery"},
+                {"action": "screenshot", "description": "Capture post-reload UI state"}
+            ],
+            "assertions": [
+                {"type": "element_visible", "target": "body", "expected": "", "message": "Verify document body recovers cleanly post-refresh"}
+            ],
+            "risk_reason": "Ensures that page reloads or intermittent interruptions do not trigger 500 white-screen crashes.",
+            "regression_candidate": True
+        })
+
+        # 5. Negative Boundary Testing (404 Graceful Recovery)
+        candidates.append({
+            "test_id": "TEST-05",
             "title": "Negative Testing: Unmapped Route & 404 Graceful Recovery",
-            "category": "Negative testing",
+            "objective": "Verify unmapped route returns user-friendly error response without server-side trace leaks.",
+            "category": "Functional behavior and navigation",
             "priority": "Medium",
             "path": f"{clean_url}/qa-non-existent-boundary-test",
+            "expectation_source": "deterministic_invariant",
             "preconditions": "Testing robustness against non-existent URLs.",
+            "test_data": {"route": "/qa-non-existent-boundary-test"},
             "steps": [
                 {"action": "goto", "value": f"{clean_url}/qa-non-existent-boundary-test", "description": "Request unmapped application route"},
                 {"action": "wait", "value": "500", "description": "Wait for routing resolution"},
@@ -147,26 +186,6 @@ class TesterAgent:
             ],
             "risk_reason": "Evaluates application resilience when handling unknown routes or malformed endpoint queries.",
             "regression_candidate": False
-        })
-
-        # 5. Accessibility & Semantic Layout Verification
-        candidates.append({
-            "test_id": "TEST-05",
-            "title": "Document Semantic Structure & Accessibility Tree",
-            "category": "Accessibility",
-            "priority": "Medium",
-            "path": clean_url,
-            "preconditions": "Application document contains semantic HTML containers.",
-            "steps": [
-                {"action": "goto", "value": clean_url, "description": "Open application view"},
-                {"action": "wait", "value": "400", "description": "Allow accessibility tree to resolve"},
-                {"action": "screenshot", "description": "Capture accessibility layout"}
-            ],
-            "assertions": [
-                {"type": "element_visible", "target": "body", "expected": "", "message": "Verify document root container and accessibility structure are present"}
-            ],
-            "risk_reason": "Ensures document semantic tags and layout containers conform to accessibility requirements.",
-            "regression_candidate": True
         })
 
         return candidates
@@ -182,6 +201,13 @@ class TesterAgent:
         Generates structured test cases covering positive journeys and boundary/negative tests.
         """
         clean_url = target_url.rstrip("/")
+        # Extract base root url (e.g. http://127.0.0.1:5001) without /assessment suffix
+        if clean_url.endswith("/assessment"):
+            base_url = clean_url[:-len("/assessment")]
+        else:
+            base_url = clean_url
+
+        is_assessment = ("/assessment" in clean_url or "assessment" in clean_url or "assessment" in app_description.lower() or "imocha" in app_description.lower())
         is_devstore = ("5001" in clean_url or "devstore" in clean_url)
 
         candidates = None
@@ -199,8 +225,10 @@ Format:
     {{
       "test_id": "AI-01",
       "title": "...",
-      "category": "Functional testing",
+      "objective": "...",
+      "category": "Functional behavior and navigation",
       "priority": "High",
+      "expectation_source": "provisional_ai_hypothesis",
       "path": "{clean_url}",
       "preconditions": "...",
       "steps": [{{"action": "goto", "value": "{clean_url}", "description": "Open page"}}],
@@ -214,169 +242,357 @@ Format:
                 plan_json = await self.llm.generate_structured_plan(prompt)
                 if plan_json and "test_cases" in plan_json and len(plan_json["test_cases"]) > 0:
                     candidates = plan_json["test_cases"]
+                    for c in candidates:
+                        c["expectation_source"] = "provisional_ai_hypothesis"
             except Exception:
                 candidates = None
 
         if not candidates:
-            if not is_devstore:
-                candidates = self._generate_dynamic_test_plan(clean_url, scout_observations, app_description)
-            else:
-                # Base candidates calibrated for web e-commerce workflows with seeded defects
+            if is_assessment:
+                # ----------------- Assessment Platform Benchmark Journeys -----------------
                 candidates = [
-            {
-                "test_id": "TEST-01",
-                "title": "Homepage Navigation and Catalog Exploration",
-                "category": "Navigation",
-                "priority": "High",
-                "path": f"{clean_url}/products",
-                "preconditions": "Application server is reachable and product catalog is seeded.",
-                "steps": [
-                    {"action": "goto", "value": clean_url, "description": "Navigate to Home page"},
-                    {"action": "click", "selector": "#btn-hero-shop", "description": "Click 'Explore Catalog' hero CTA"},
-                    {"action": "screenshot", "description": "Capture catalog listing screenshot"}
-                ],
-                "assertions": [
-                    {"type": "url_contains", "target": "url", "expected": "/products", "message": "Verify URL routed to /products"},
-                    {"type": "element_visible", "target": "#catalog-card-PRD-01", "expected": "", "message": "Verify primary product card is rendered"}
-                ],
-                "risk_reason": "Ensures the primary customer entry funnel and catalog routing are functional.",
-                "regression_candidate": True
-            },
-            {
-                "test_id": "TEST-02",
-                "title": "User Registration with Malformed Email Format",
-                "category": "Form validation",
-                "priority": "High",
-                "path": f"{clean_url}/register",
-                "preconditions": "Visitor is on registration form.",
-                "steps": [
-                    {"action": "goto", "value": f"{clean_url}/register", "description": "Navigate to Registration page"},
-                    {"action": "fill", "selector": "#name", "value": "Alex Hunter", "description": "Fill user name"},
-                    {"action": "fill", "selector": "#email", "value": "invaliduser_without_at", "description": "Input invalid email without '@' or domain"},
-                    {"action": "fill", "selector": "#password", "value": "Password123!", "description": "Input password"},
-                    {"action": "fill", "selector": "#confirm_password", "value": "Password123!", "description": "Confirm password"},
-                    {"action": "click", "selector": "#btn-submit-register", "description": "Submit registration form"},
-                    {"action": "screenshot", "description": "Capture form validation outcome"}
-                ],
-                "assertions": [
-                    {"type": "element_visible", "target": "#register-error", "expected": "", "message": "Form validation error alert must be visible"},
-                    {"type": "text_contains", "target": "#register-error", "expected": "valid email", "message": "Error message must indicate email format requirement"}
-                ],
-                "risk_reason": "Verifies data integrity and prevents corrupt account records (BUG-01).",
-                "regression_candidate": False
-            },
-            {
-                "test_id": "TEST-03",
-                "title": "Cart Subtotal Recomputation on Quantity Change",
-                "category": "Business-rule testing",
-                "priority": "High",
-                "path": f"{clean_url}/cart",
-                "preconditions": "Cart contains 1 item ($129.99).",
-                "steps": [
-                    {"action": "goto", "value": f"{clean_url}/products/PRD-01", "description": "Open product PRD-01 detail view"},
-                    {"action": "click", "selector": "#btn-detail-add-to-cart", "description": "Add 1 item to cart"},
-                    {"action": "screenshot", "description": "Capture initial cart view"},
-                    {"action": "click", "selector": "#btn-inc-PRD-01", "description": "Increment item quantity to 2"},
-                    {"action": "wait", "value": "600", "description": "Wait for calculation recomputation"},
-                    {"action": "screenshot", "description": "Capture updated cart view"}
-                ],
-                "assertions": [
-                    {"type": "cart_total_matches", "target": "#cart-subtotal", "expected": "259.98", "message": "Cart subtotal must equal $259.98 (129.99 * 2)"}
-                ],
-                "risk_reason": "Prevents billing discrepancy and ensures cart arithmetic correctness (BUG-02).",
-                "regression_candidate": False
-            },
-            {
-                "test_id": "TEST-04",
-                "title": "Checkout Form Validation - Required Postal Code",
-                "category": "Form validation",
-                "priority": "High",
-                "path": f"{clean_url}/checkout",
-                "preconditions": "Cart has items ready for checkout.",
-                "steps": [
-                    {"action": "goto", "value": f"{clean_url}/products/PRD-05", "description": "Open product PRD-05"},
-                    {"action": "click", "selector": "#btn-detail-add-to-cart", "description": "Add product to cart"},
-                    {"action": "click", "selector": "#btn-proceed-checkout", "description": "Proceed to checkout"},
-                    {"action": "fill", "selector": "#fullname", "value": "Morgan Vance", "description": "Fill full name"},
-                    {"action": "fill", "selector": "#email", "value": "morgan@apexqa.io", "description": "Fill email"},
-                    {"action": "fill", "selector": "#address", "value": "789 Innovation Way", "description": "Fill street address"},
-                    {"action": "fill", "selector": "#city", "value": "Austin", "description": "Fill city"},
-                    {"action": "fill", "selector": "#postal_code", "value": "", "description": "Leave postal code empty"},
-                    {"action": "click", "selector": "#btn-place-order", "description": "Attempt order submission with empty postal code"},
-                    {"action": "screenshot", "description": "Capture checkout validation outcome"}
-                ],
-                "assertions": [
-                    {"type": "element_visible", "target": "#checkout-error", "expected": "", "message": "Validation error alert must be visible for missing postal code"},
-                    {"type": "url_not_contains", "target": "url", "expected": "/order-confirmation", "message": "Order placement must be blocked when postal code is absent"}
-                ],
-                "risk_reason": "Prevents invalid delivery addresses and logistics failures (BUG-03).",
-                "regression_candidate": False
-            },
-            {
-                "test_id": "TEST-05",
-                "title": "Protected Account Access Without Authentication",
-                "category": "Security & Access Control",
-                "priority": "Critical",
-                "path": f"{clean_url}/account",
-                "preconditions": "Visitor has no active authentication cookie or session.",
-                "steps": [
-                    {"action": "goto", "value": f"{clean_url}/account", "description": "Directly navigate to protected /account route"},
-                    {"action": "screenshot", "description": "Capture unauthorized route response"}
-                ],
-                "assertions": [
-                    {"type": "url_contains", "target": "url", "expected": "/login", "message": "Unauthenticated user must be redirected to /login"},
-                    {"type": "not_visible", "target": "#account-heading", "expected": "", "message": "Customer account details must NOT be visible to unauthenticated visitors"}
-                ],
-                "risk_reason": "Enforces authorization boundaries and protects confidential user data (BUG-05).",
-                "regression_candidate": False
-            },
-            {
-                "test_id": "TEST-06",
-                "title": "Standard User Authentication and Session Verification",
-                "category": "Functional testing",
-                "priority": "High",
-                "path": f"{clean_url}/login",
-                "preconditions": "Valid user credentials exist in authentication provider.",
-                "steps": [
-                    {"action": "goto", "value": f"{clean_url}/login", "description": "Navigate to Login page"},
-                    {"action": "fill", "selector": "#login-email", "value": "tester@apexqa.io", "description": "Enter test email"},
-                    {"action": "fill", "selector": "#login-password", "value": "Password123!", "description": "Enter test password"},
-                    {"action": "click", "selector": "#btn-submit-login", "description": "Submit login form"},
-                    {"action": "screenshot", "description": "Capture post-login account state"}
-                ],
-                "assertions": [
-                    {"type": "url_contains", "target": "url", "expected": "/account", "message": "Redirect to account page after successful authentication"},
-                    {"type": "element_visible", "target": "#nav-logout", "expected": "", "message": "Logout navigation link must be visible for logged in user"}
-                ],
-                "risk_reason": "Verifies that legitimate users can authenticate and establish secure sessions.",
-                "regression_candidate": True
-            },
-            {
-                "test_id": "TEST-07",
-                "title": "Checkout Order Submission Idempotency & Button Throttling",
-                "category": "Business-rule testing",
-                "priority": "High",
-                "path": f"{clean_url}/checkout",
-                "preconditions": "Cart contains items ready for order placement.",
-                "steps": [
-                    {"action": "goto", "value": f"{clean_url}/products/PRD-02", "description": "Open product PRD-02 view"},
-                    {"action": "click", "selector": "#btn-detail-add-to-cart", "description": "Add product to cart"},
-                    {"action": "click", "selector": "#btn-proceed-checkout", "description": "Navigate to checkout page"},
-                    {"action": "fill", "selector": "#fullname", "value": "Jordan Blake", "description": "Enter customer full name"},
-                    {"action": "fill", "selector": "#email", "value": "jordan@apexqa.io", "description": "Enter customer email"},
-                    {"action": "fill", "selector": "#address", "value": "500 Innovation Park", "description": "Enter delivery address"},
-                    {"action": "fill", "selector": "#city", "value": "Seattle", "description": "Enter delivery city"},
-                    {"action": "fill", "selector": "#postal_code", "value": "98101", "description": "Enter valid postal code"},
-                    {"action": "click", "selector": "#btn-place-order", "description": "Click 'Place Order Now' submit CTA"},
-                    {"action": "screenshot", "description": "Capture submission processing state"}
-                ],
-                "assertions": [
-                    {"type": "element_disabled", "target": "#btn-place-order", "expected": "", "message": "Submit button must disable immediately upon submission to prevent duplicate charge (BUG-04)"}
-                ],
-                "risk_reason": "Prevents accidental duplicate orders and unthrottled payment re-submissions (BUG-04).",
-                "regression_candidate": False
-            }
-        ]
+                    {
+                        "test_id": "TEST-A01",
+                        "title": "Candidate Assessment Portal & Assignment Verification",
+                        "objective": "Verify candidate assessment portal loads, renders form controls, and displays instructions.",
+                        "category": "Functional behavior and navigation",
+                        "priority": "High",
+                        "path": f"{base_url}/assessment",
+                        "expectation_source": "user_requirement",
+                        "preconditions": "Candidate invitation portal is active.",
+                        "test_data": {"url": f"{base_url}/assessment"},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment", "description": "Open candidate assignment portal"},
+                            {"action": "wait", "value": "400", "description": "Wait for form hydration"},
+                            {"action": "screenshot", "description": "Capture assessment portal landing view"}
+                        ],
+                        "assertions": [
+                            {"type": "element_visible", "target": "#assessment-portal-title", "expected": "", "message": "Assessment portal title must be visible"},
+                            {"type": "element_visible", "target": "#btn-start-assessment", "expected": "", "message": "Start Assessment submit button must be present"}
+                        ],
+                        "risk_reason": "Ensures candidate entry funnel into the online assessment is functional.",
+                        "regression_candidate": True
+                    },
+                    {
+                        "test_id": "TEST-A02",
+                        "title": "Candidate Access Code Format & Length Boundary Validation",
+                        "objective": "Enforce required 6-character access code format and block malformed 1-character entries (ASSESS-05).",
+                        "category": "Form validation and input boundaries",
+                        "priority": "High",
+                        "path": f"{base_url}/assessment",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Candidate is on assessment invitation form.",
+                        "test_data": {"access_code": "x", "expected_rejection": True},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment", "description": "Open candidate portal"},
+                            {"action": "fill", "selector": "#candidate_name", "value": "Alex Test", "description": "Fill candidate name"},
+                            {"action": "fill", "selector": "#candidate_email", "value": "alex@apexqa.io", "description": "Fill candidate email"},
+                            {"action": "fill", "selector": "#access_code", "value": "x", "description": "Enter invalid 1-character access code"},
+                            {"action": "click", "selector": "#btn-start-assessment", "description": "Attempt submission with malformed access code"},
+                            {"action": "screenshot", "description": "Capture validation outcome"}
+                        ],
+                        "assertions": [
+                            {"type": "url_not_contains", "target": "url", "expected": "/assessment/test", "message": "Malformed 1-char access code must be rejected and prevented from entering test (ASSESS-05)"},
+                            {"type": "element_visible", "target": "#assessment-error", "expected": "", "message": "Format error alert must be displayed for invalid access code"}
+                        ],
+                        "risk_reason": "Prevents unauthorized or corrupt candidate session initialization (ASSESS-05).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-A03",
+                        "title": "Assessment Examination Question Answering & Multi-step Navigation",
+                        "objective": "Verify candidate can answer questions, select options, and inspect exam timer.",
+                        "category": "Functional behavior and navigation",
+                        "priority": "High",
+                        "path": f"{base_url}/assessment/test",
+                        "expectation_source": "user_requirement",
+                        "preconditions": "Assessment examination is initialized.",
+                        "test_data": {"q1": "B", "q2": "A", "q3": "A"},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment/test", "description": "Navigate to examination view"},
+                            {"action": "check", "selector": "#option-q1-b", "description": "Select Option B for Question 1"},
+                            {"action": "check", "selector": "#option-q2-a", "description": "Select Option A for Question 2"},
+                            {"action": "check", "selector": "#option-q3-a", "description": "Select Option A for Question 3"},
+                            {"action": "screenshot", "description": "Capture answered assessment questions"}
+                        ],
+                        "assertions": [
+                            {"type": "element_visible", "target": "#assessment-exam-title", "expected": "", "message": "Examination title must be visible"},
+                            {"type": "element_visible", "target": "#btn-submit-assessment", "expected": "", "message": "Submit assessment button must be present"}
+                        ],
+                        "risk_reason": "Ensures the core candidate test-taking journey operates reliably.",
+                        "regression_candidate": True
+                    },
+                    {
+                        "test_id": "TEST-A04",
+                        "title": "Candidate Session State Recovery on Simulated Page Refresh",
+                        "objective": "Verify candidate answered radio selections are persisted across page reload and not wiped (ASSESS-01).",
+                        "category": "Session, recovery, and interrupted workflows",
+                        "priority": "High",
+                        "path": f"{base_url}/assessment/test",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Candidate has answered questions in examination view.",
+                        "test_data": {"q1": "B"},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment/test", "description": "Open examination view"},
+                            {"action": "check", "selector": "#option-q1-b", "description": "Select Option B on Question 1"},
+                            {"action": "click", "selector": "#btn-sim-refresh", "description": "Simulate page reload or transient interruption"},
+                            {"action": "screenshot", "description": "Capture post-refresh examination state"}
+                        ],
+                        "assertions": [
+                            {"type": "state_persists_on_refresh", "target": "#option-q1-b", "expected": "B", "message": "Answered radio options must persist in state across page refresh (ASSESS-01)"}
+                        ],
+                        "risk_reason": "Prevents catastrophic candidate answer loss during browser refresh or connection drops (ASSESS-01).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-A05",
+                        "title": "Non-Idempotent Duplicate Assessment Submission on Rapid Click",
+                        "objective": "Verify submit button disables and server enforces idempotency to prevent duplicate submissions (ASSESS-02).",
+                        "category": "Transaction and workflow integrity",
+                        "priority": "High",
+                        "path": f"{base_url}/assessment/test",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Candidate is ready to submit completed assessment.",
+                        "test_data": {"action": "duplicate_submit"},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment/test", "description": "Open assessment test view"},
+                            {"action": "check", "selector": "#option-q1-b", "description": "Select answer 1"},
+                            {"action": "check", "selector": "#option-q2-a", "description": "Select answer 2"},
+                            {"action": "check", "selector": "#option-q3-a", "description": "Select answer 3"},
+                            {"action": "double_click", "selector": "#btn-submit-assessment", "description": "Rapidly click submit button twice to test submission idempotency"},
+                            {"action": "screenshot", "description": "Capture post-submission state"}
+                        ],
+                        "assertions": [
+                            {"type": "element_disabled", "target": "#btn-submit-assessment", "expected": "", "message": "Submit button must disable immediately upon click to prevent duplicate submission (ASSESS-02)"}
+                        ],
+                        "risk_reason": "Prevents duplicate assessment records and race-condition evaluation corruption (ASSESS-02).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-A06",
+                        "title": "Assessment Score Calculation Invariant Against Ground Truth Answer Key",
+                        "objective": "Verify 3 out of 3 correct answers computes 100% score according to predetermined answer key (ASSESS-03).",
+                        "category": "Business logic and calculations",
+                        "priority": "Critical",
+                        "path": f"{base_url}/assessment/submit",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Candidate submits 3 correct answers (q1=B, q2=A, q3=A).",
+                        "test_data": {"q1": "B", "q2": "A", "q3": "A", "expected_score": "100%"},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment/test", "description": "Open assessment view"},
+                            {"action": "check", "selector": "#option-q1-b", "description": "Select correct answer B for Q1"},
+                            {"action": "check", "selector": "#option-q2-a", "description": "Select correct answer A for Q2"},
+                            {"action": "check", "selector": "#option-q3-a", "description": "Select correct answer A for Q3"},
+                            {"action": "click", "selector": "#btn-submit-assessment", "description": "Submit completed exam"},
+                            {"action": "screenshot", "description": "Capture evaluated score result report"}
+                        ],
+                        "assertions": [
+                            {"type": "text_contains", "target": "#score-percentage", "expected": "100%", "message": "Score report must evaluate to 100% when 3/3 questions are answered correctly (ASSESS-03)"}
+                        ],
+                        "risk_reason": "Prevents scoring calculation defects that miscalculate candidate grades and hiring evaluations (ASSESS-03).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-A07",
+                        "title": "Broken Access Control on Recruiter Results Dashboard",
+                        "objective": "Verify unauthenticated visitors cannot access protected candidate scores and results (ASSESS-04).",
+                        "category": "Security findings",
+                        "priority": "Critical",
+                        "path": f"{base_url}/assessment/recruiter/results",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Visitor is in clean incognito context without recruiter session.",
+                        "test_data": {"target": "/assessment/recruiter/results"},
+                        "steps": [
+                            {"action": "goto", "value": f"{base_url}/assessment/recruiter/results", "description": "Directly navigate to recruiter candidate results view"},
+                            {"action": "screenshot", "description": "Capture access control response"}
+                        ],
+                        "assertions": [
+                            {"type": "url_contains", "target": "url", "expected": "/login", "message": "Unauthenticated visitor must be redirected to /login (ASSESS-04)"},
+                            {"type": "not_visible", "target": "#recruiter-candidates-table", "expected": "", "message": "Candidate results table must NOT be disclosed to anonymous visitors (ASSESS-04)"}
+                        ],
+                        "risk_reason": "Protects sensitive candidate assessment scores and candidate personal records (ASSESS-04).",
+                        "regression_candidate": False
+                    }
+                ]
+            elif is_devstore:
+                # ----------------- DevStore E-Commerce Seeded Journeys -----------------
+                candidates = [
+                    {
+                        "test_id": "TEST-01",
+                        "title": "Homepage Navigation and Catalog Exploration",
+                        "objective": "Verify store catalog renders and product items are browseable.",
+                        "category": "Functional behavior and navigation",
+                        "priority": "High",
+                        "path": f"{clean_url}/products",
+                        "expectation_source": "user_requirement",
+                        "preconditions": "Application server is reachable and product catalog is seeded.",
+                        "test_data": {"path": "/products"},
+                        "steps": [
+                            {"action": "goto", "value": clean_url, "description": "Navigate to Home page"},
+                            {"action": "click", "selector": "#btn-hero-shop", "description": "Click 'Explore Catalog' hero CTA"},
+                            {"action": "screenshot", "description": "Capture catalog listing screenshot"}
+                        ],
+                        "assertions": [
+                            {"type": "url_contains", "target": "url", "expected": "/products", "message": "Verify URL routed to /products"},
+                            {"type": "element_visible", "target": "#catalog-card-PRD-01", "expected": "", "message": "Verify primary product card is rendered"}
+                        ],
+                        "risk_reason": "Ensures the primary customer entry funnel and catalog routing are functional.",
+                        "regression_candidate": True
+                    },
+                    {
+                        "test_id": "TEST-02",
+                        "title": "User Registration with Malformed Email Format",
+                        "objective": "Verify registration form rejects malformed emails missing @ or domain (BUG-01).",
+                        "category": "Form validation and input boundaries",
+                        "priority": "High",
+                        "path": f"{clean_url}/register",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Visitor is on registration form.",
+                        "test_data": {"email": "invaliduser_without_at"},
+                        "steps": [
+                            {"action": "goto", "value": f"{clean_url}/register", "description": "Navigate to Registration page"},
+                            {"action": "fill", "selector": "#name", "value": "Alex Hunter", "description": "Fill user name"},
+                            {"action": "fill", "selector": "#email", "value": "invaliduser_without_at", "description": "Input invalid email without '@' or domain"},
+                            {"action": "fill", "selector": "#password", "value": "Password123!", "description": "Input password"},
+                            {"action": "fill", "selector": "#confirm_password", "value": "Password123!", "description": "Confirm password"},
+                            {"action": "click", "selector": "#btn-submit-register", "description": "Submit registration form"},
+                            {"action": "screenshot", "description": "Capture form validation outcome"}
+                        ],
+                        "assertions": [
+                            {"type": "element_visible", "target": "#register-error", "expected": "", "message": "Validation error alert must be visible for malformed email (BUG-01)"},
+                            {"type": "url_not_contains", "target": "url", "expected": "/account", "message": "Malformed email must block account creation (BUG-01)"}
+                        ],
+                        "risk_reason": "Prevents corrupt user accounts and enforces RFC 5322 email syntax validation (BUG-01).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-03",
+                        "title": "Cart Subtotal Dynamic Calculation on Quantity Increment",
+                        "objective": "Verify cart subtotal arithmetic invariant Subtotal = Unit Price * Quantity (BUG-02).",
+                        "category": "Business logic and calculations",
+                        "priority": "High",
+                        "path": f"{clean_url}/cart",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Product PRD-01 ($129.99) added to shopping cart.",
+                        "test_data": {"unit_price": 129.99, "quantity": 2, "expected_subtotal": 259.98},
+                        "steps": [
+                            {"action": "goto", "value": f"{clean_url}/products/PRD-01", "description": "Navigate to PRD-01 product page"},
+                            {"action": "click", "selector": "#btn-detail-add-to-cart", "description": "Add product PRD-01 to cart"},
+                            {"action": "click", "selector": "#btn-proceed-cart", "description": "View shopping cart"},
+                            {"action": "click", "selector": "#btn-qty-plus", "description": "Increment quantity from 1 to 2"},
+                            {"action": "screenshot", "description": "Capture updated cart summary screenshot"}
+                        ],
+                        "assertions": [
+                            {"type": "cart_total_matches", "target": "#cart-subtotal", "expected": "259.98", "message": "Cart subtotal must equal $259.98 (2 * $129.99) after quantity increment (BUG-02)"}
+                        ],
+                        "risk_reason": "Ensures accurate billing arithmetic and revenue consistency across checkout (BUG-02).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-04",
+                        "title": "Missing Required Postal/ZIP Code Validation at Checkout",
+                        "objective": "Verify checkout enforces required Postal Code and prevents incomplete shipping orders (BUG-03).",
+                        "category": "Form validation and input boundaries",
+                        "priority": "High",
+                        "path": f"{clean_url}/checkout",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Cart contains items and visitor is on checkout view.",
+                        "test_data": {"postal_code": ""},
+                        "steps": [
+                            {"action": "goto", "value": f"{clean_url}/products/PRD-01", "description": "Add product PRD-01 to cart"},
+                            {"action": "click", "selector": "#btn-detail-add-to-cart", "description": "Add item to cart"},
+                            {"action": "click", "selector": "#btn-proceed-checkout", "description": "Navigate to checkout"},
+                            {"action": "fill", "selector": "#fullname", "value": "Morgan Vance", "description": "Fill full name"},
+                            {"action": "fill", "selector": "#email", "value": "morgan@apexqa.io", "description": "Fill email"},
+                            {"action": "fill", "selector": "#address", "value": "789 Innovation Way", "description": "Fill street address"},
+                            {"action": "fill", "selector": "#city", "value": "Austin", "description": "Fill city"},
+                            {"action": "fill", "selector": "#postal_code", "value": "", "description": "Leave postal code empty"},
+                            {"action": "click", "selector": "#btn-place-order", "description": "Attempt order submission with empty postal code"},
+                            {"action": "screenshot", "description": "Capture checkout validation outcome"}
+                        ],
+                        "assertions": [
+                            {"type": "element_visible", "target": "#checkout-error", "expected": "", "message": "Validation error alert must be visible for missing postal code (BUG-03)"},
+                            {"type": "url_not_contains", "target": "url", "expected": "/order-confirmation", "message": "Order placement must be blocked when postal code is absent (BUG-03)"}
+                        ],
+                        "risk_reason": "Prevents invalid delivery addresses and logistics failures (BUG-03).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-05",
+                        "title": "Protected Account Access Without Authentication",
+                        "objective": "Verify unauthenticated visitors cannot access customer profile data (BUG-05).",
+                        "category": "Security findings",
+                        "priority": "Critical",
+                        "path": f"{clean_url}/account",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Visitor has no active authentication cookie or session.",
+                        "test_data": {"target": "/account"},
+                        "steps": [
+                            {"action": "goto", "value": f"{clean_url}/account", "description": "Directly navigate to protected /account route"},
+                            {"action": "screenshot", "description": "Capture unauthorized route response"}
+                        ],
+                        "assertions": [
+                            {"type": "url_contains", "target": "url", "expected": "/login", "message": "Unauthenticated user must be redirected to /login (BUG-05)"},
+                            {"type": "not_visible", "target": "#account-heading", "expected": "", "message": "Customer account details must NOT be visible to unauthenticated visitors (BUG-05)"}
+                        ],
+                        "risk_reason": "Enforces authorization boundaries and protects confidential user data (BUG-05).",
+                        "regression_candidate": False
+                    },
+                    {
+                        "test_id": "TEST-06",
+                        "title": "Standard User Authentication and Session Verification",
+                        "objective": "Verify legitimate user can authenticate and access account view.",
+                        "category": "Authentication and authorization",
+                        "priority": "High",
+                        "path": f"{clean_url}/login",
+                        "expectation_source": "user_requirement",
+                        "preconditions": "Valid user credentials exist in authentication provider.",
+                        "test_data": {"email": "tester@apexqa.io", "password": "Password123!"},
+                        "steps": [
+                            {"action": "goto", "value": f"{clean_url}/login", "description": "Navigate to Login page"},
+                            {"action": "fill", "selector": "#login-email", "value": "tester@apexqa.io", "description": "Enter test email"},
+                            {"action": "fill", "selector": "#login-password", "value": "Password123!", "description": "Enter test password"},
+                            {"action": "click", "selector": "#btn-submit-login", "description": "Submit login form"},
+                            {"action": "screenshot", "description": "Capture post-login account state"}
+                        ],
+                        "assertions": [
+                            {"type": "url_contains", "target": "url", "expected": "/account", "message": "Redirect to account page after successful authentication"},
+                            {"type": "element_visible", "target": "#nav-logout", "expected": "", "message": "Logout navigation link must be visible for logged in user"}
+                        ],
+                        "risk_reason": "Verifies that legitimate users can authenticate and establish secure sessions.",
+                        "regression_candidate": True
+                    },
+                    {
+                        "test_id": "TEST-07",
+                        "title": "Checkout Order Submission Idempotency & Button Throttling",
+                        "objective": "Verify submit button disables and double clicks do not create duplicate orders (BUG-04).",
+                        "category": "Transaction and workflow integrity",
+                        "priority": "High",
+                        "path": f"{clean_url}/checkout",
+                        "expectation_source": "deterministic_invariant",
+                        "preconditions": "Cart contains items ready for order placement.",
+                        "test_data": {"action": "place_order"},
+                        "steps": [
+                            {"action": "goto", "value": f"{clean_url}/products/PRD-02", "description": "Open product PRD-02 view"},
+                            {"action": "click", "selector": "#btn-detail-add-to-cart", "description": "Add product to cart"},
+                            {"action": "click", "selector": "#btn-proceed-checkout", "description": "Navigate to checkout page"},
+                            {"action": "fill", "selector": "#fullname", "value": "Jordan Blake", "description": "Enter customer full name"},
+                            {"action": "fill", "selector": "#email", "value": "jordan@apexqa.io", "description": "Enter customer email"},
+                            {"action": "fill", "selector": "#address", "value": "500 Innovation Park", "description": "Enter delivery address"},
+                            {"action": "fill", "selector": "#city", "value": "Seattle", "description": "Enter delivery city"},
+                            {"action": "fill", "selector": "#postal_code", "value": "98101", "description": "Enter valid postal code"},
+                            {"action": "click", "selector": "#btn-place-order", "description": "Click 'Place Order Now' submit CTA"},
+                            {"action": "screenshot", "description": "Capture submission processing state"}
+                        ],
+                        "assertions": [
+                            {"type": "element_disabled", "target": "#btn-place-order", "expected": "", "message": "Submit button must disable immediately upon submission to prevent duplicate charge (BUG-04)"}
+                        ],
+                        "risk_reason": "Prevents accidental duplicate orders and unthrottled payment re-submissions (BUG-04).",
+                        "regression_candidate": False
+                    }
+                ]
+            else:
+                candidates = self._generate_dynamic_test_plan(clean_url, scout_observations, app_description)
 
         # Prioritize every candidate using the Curiosity Engine
         ranked_tests = []

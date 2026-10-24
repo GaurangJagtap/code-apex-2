@@ -3,18 +3,19 @@ import json
 import uuid
 import datetime
 import asyncio
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from backend.app.db.session import get_db, Base, engine, SessionLocal
 from backend.app.db.models import (
     TestRun, ExploredPage, TestCase, TestExecution, BugFinding, Artifact, RunEvent,
-    RegressionTest, RegressionExecution
+    RegressionTest, RegressionExecution, BehavioralBaseline
 )
 from backend.app.schemas.qa_schemas import (
     RunCreateRequest, RunSummaryResponse, RunEventResponse, ExploredPageResponse,
-    BugFindingResponse, TestExecutionResponse, RegressionTestResponse, RegressionRunResultResponse
+    BugFindingResponse, TestExecutionResponse, RegressionTestResponse, RegressionRunResultResponse,
+    BaselineCreateRequest, BaselineResponse
 )
 from backend.app.core.config import settings
 from backend.app.core.security import is_url_allowed
@@ -22,18 +23,98 @@ from backend.app.services.run_controller import RunController
 from backend.app.services.report_builder import ReportBuilder
 from backend.app.services.browser_manager import BrowserSession
 from backend.app.services.browser_executor import BrowserExecutor
-
-# Ensure DB tables are created
-Base.metadata.create_all(bind=engine)
+from backend.app.services.benchmark_service import BenchmarkService
 
 api_router = APIRouter()
+
+# ----------------- Seeded Baselines Helper -----------------
+DEFAULT_BASELINES = [
+    {
+        "id": "BL-INV-01",
+        "name": "Cart Subtotal Arithmetic Invariant",
+        "target_domain": "devstore.local",
+        "category": "Business logic and calculations",
+        "source_type": "deterministic_invariant",
+        "version": "v1.0",
+        "rule_definition": {"invariant": "Subtotal == sum(UnitPrice * Quantity)", "tolerance": 0.05},
+        "expected_state": {"subtotal_formula": "price * quantity"},
+        "is_approved": True,
+        "notes": "Mathematical invariant for dynamic cart item recalculation."
+    },
+    {
+        "id": "BL-INV-02",
+        "name": "Strict Form Validation Boundary Enforcement",
+        "target_domain": "*",
+        "category": "Form validation and input boundaries",
+        "source_type": "deterministic_invariant",
+        "version": "v1.0",
+        "rule_definition": {"email_format": "RFC 5322 with @ and domain", "postal_code": "required in checkout"},
+        "expected_state": {"blocks_invalid_submission": True},
+        "is_approved": True,
+        "notes": "Required fields and email syntax boundary enforcement."
+    },
+    {
+        "id": "BL-INV-03",
+        "name": "Transaction Submission Idempotency Invariant",
+        "target_domain": "*",
+        "category": "Transaction and workflow integrity",
+        "source_type": "business_rule",
+        "version": "v1.0",
+        "rule_definition": {"idempotency_key": True, "throttle_seconds": 5},
+        "expected_state": {"duplicate_order_prevention": True},
+        "is_approved": True,
+        "notes": "Double clicks or repeated requests must not create duplicate orders or test records."
+    },
+    {
+        "id": "BL-INV-04",
+        "name": "Role-Based Access Control Non-Disclosure Invariant",
+        "target_domain": "*",
+        "category": "Security findings",
+        "source_type": "deterministic_invariant",
+        "version": "v1.0",
+        "rule_definition": {"unauthenticated_redirect": "/login", "status_code": 303},
+        "expected_state": {"protected_data_hidden": True},
+        "is_approved": True,
+        "notes": "Unauthenticated requests to customer or recruiter records must redirect to login."
+    },
+    {
+        "id": "BL-INV-05",
+        "name": "Session State Recovery & Refresh Persistence Invariant",
+        "target_domain": "*",
+        "category": "Session, recovery, and interrupted workflows",
+        "source_type": "deterministic_invariant",
+        "version": "v1.0",
+        "rule_definition": {"persist_across_reload": True, "target_workflows": ["cart", "assessment_answers"]},
+        "expected_state": {"state_persists_on_refresh": True},
+        "is_approved": True,
+        "notes": "Transient disconnection or page reloads must preserve candidate answers and cart state."
+    }
+]
+
+def ensure_seeded_baselines(db: Session):
+    count = db.query(BehavioralBaseline).count()
+    if count == 0:
+        for b in DEFAULT_BASELINES:
+            rec = BehavioralBaseline(
+                id=b["id"],
+                name=b["name"],
+                target_domain=b["target_domain"],
+                category=b["category"],
+                source_type=b["source_type"],
+                version=b["version"],
+                rule_definition=b["rule_definition"],
+                expected_state=b["expected_state"],
+                is_approved=b["is_approved"],
+                notes=b["notes"]
+            )
+            db.add(rec)
+        db.commit()
 
 # ----------------- Health & Config Status -----------------
 
 @api_router.get("/health")
 def health_check(db: Session = Depends(get_db)):
     try:
-        # Check database connectivity
         db.execute(Base.metadata.tables["test_runs"].select().limit(1))
         db_status = "connected"
     except Exception as e:
@@ -74,7 +155,6 @@ async def create_and_launch_run(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    # Validate target URL scheme and allowed hosts
     if not is_url_allowed(req.target_url):
         raise HTTPException(
             status_code=400,
@@ -90,6 +170,8 @@ async def create_and_launch_run(
         description=req.description,
         status="created",
         mode=mode,
+        test_mode=req.test_mode or "universal_exploratory",
+        baseline_profile=req.baseline_profile or "default",
         objectives=req.objectives,
         boundaries=req.boundaries
     )
@@ -103,7 +185,8 @@ async def create_and_launch_run(
         "run_id": run_id,
         "status": "created",
         "mode": mode,
-        "message": f"Run {run_id} scheduled and launched in {mode.upper()} mode."
+        "test_mode": run.test_mode,
+        "message": f"Run {run_id} scheduled and launched in {mode.upper()} mode ({run.test_mode})."
     }
 
 @api_router.get("/runs", response_model=List[RunSummaryResponse])
@@ -121,6 +204,8 @@ def list_test_runs(
             description=r.description,
             status=r.status,
             mode=r.mode,
+            test_mode=getattr(r, "test_mode", "universal_exploratory") or "universal_exploratory",
+            baseline_profile=getattr(r, "baseline_profile", "default") or "default",
             start_time=r.start_time.isoformat() if r.start_time else "",
             end_time=r.end_time.isoformat() if r.end_time else None,
             duration_sec=r.duration_sec,
@@ -144,6 +229,8 @@ def get_test_run(run_id: str, db: Session = Depends(get_db)):
         description=r.description,
         status=r.status,
         mode=r.mode,
+        test_mode=getattr(r, "test_mode", "universal_exploratory") or "universal_exploratory",
+        baseline_profile=getattr(r, "baseline_profile", "default") or "default",
         start_time=r.start_time.isoformat() if r.start_time else "",
         end_time=r.end_time.isoformat() if r.end_time else None,
         duration_sec=r.duration_sec,
@@ -174,10 +261,6 @@ def get_run_events(run_id: str, db: Session = Depends(get_db)):
 
 @api_router.get("/runs/{run_id}/events/stream")
 async def stream_run_events(run_id: str):
-    """
-    Real-time Server-Sent Events (SSE) stream yielding live execution events as they occur.
-    Transports real backend events to the frontend in real time with reconnection support.
-    """
     async def event_generator():
         seen_event_ids = set()
         retries_after_terminal = 0
@@ -210,10 +293,8 @@ async def stream_run_events(run_id: str):
                         }
                         yield f"data: {json.dumps(payload)}\n\n"
 
-                # Check if run reached a terminal state
                 if run.status in ("completed", "failed", "cancelled"):
                     retries_after_terminal += 1
-                    # Ensure all trailing events were flushed before closing
                     if retries_after_terminal >= 2:
                         terminal_payload = {
                             "stage": "terminal",
@@ -270,6 +351,7 @@ def get_run_tests(run_id: str, db: Session = Depends(get_db)):
             "id": t.id,
             "test_case_id": t.id,
             "title": t.title,
+            "objective": getattr(t, "objective", None) or t.risk_reason,
             "category": t.category,
             "priority": t.priority,
             "priority_score": t.priority_score,
@@ -278,7 +360,85 @@ def get_run_tests(run_id: str, db: Session = Depends(get_db)):
             "retry_count": exec_item.retry_count if exec_item else 0,
             "preconditions": t.preconditions,
             "steps": t.steps,
+            "test_data": getattr(t, "test_data", {}) or {},
             "assertions": t.assertions,
+            "expectation_source": getattr(t, "expectation_source", "deterministic_invariant") or "deterministic_invariant",
+            "baseline_id": getattr(t, "baseline_id", None),
+            "actual_observations": exec_item.actual_observations if exec_item else None,
+            "assertion_results": exec_item.assertion_results if exec_item else [],
+            "screenshot_urls": screenshot_urls,
+            "console_logs": exec_item.console_logs if exec_item else [],
+            "network_observations": getattr(exec_item, "network_observations", []) if exec_item else [],
+            "finding_id": finding_item.id if finding_item else None,
+            "risk_reason": t.risk_reason,
+            "curiosity_breakdown": t.curiosity_breakdown,
+            "regression_eligible": t.regression_eligible,
+            "created_at": t.created_at.isoformat() if t.created_at else None
+        })
+    return results
+
+# ----------------- Dedicated Test Cases API -----------------
+
+@api_router.get("/test-cases")
+def list_test_cases(
+    run_id: Optional[str] = None,
+    status: Optional[str] = None,
+    category: Optional[str] = None,
+    priority: Optional[str] = None,
+    source: Optional[str] = None,
+    search: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Searchable, filterable registry of every generated test case across all execution states
+    (Passed, Failed, Blocked, Skipped, Inconclusive).
+    """
+    query = db.query(TestCase)
+    if run_id:
+        query = query.filter(TestCase.run_id == run_id)
+    if status:
+        query = query.filter(TestCase.status == status)
+    if category:
+        query = query.filter(TestCase.category == category)
+    if priority:
+        query = query.filter(TestCase.priority == priority)
+    if source:
+        query = query.filter(TestCase.expectation_source == source)
+
+    tests = query.order_by(TestCase.created_at.desc()).limit(100).all()
+    test_ids = [t.id for t in tests]
+    executions = {e.test_case_id: e for e in db.query(TestExecution).filter(TestExecution.test_case_id.in_(test_ids)).all()}
+    findings = {f.test_execution_id: f for f in db.query(BugFinding).all()}
+
+    results = []
+    for t in tests:
+        if search:
+            search_str = f"{t.title} {t.id} {t.category} {t.risk_reason or ''}".lower()
+            if search.lower() not in search_str:
+                continue
+
+        exec_item = executions.get(t.id)
+        finding_item = findings.get(exec_item.id) if exec_item else None
+        screenshot_urls = [f"/api/v1/artifacts/{s_id}" for s_id in (exec_item.screenshot_ids if exec_item else [])]
+
+        results.append({
+            "id": t.id,
+            "test_case_id": t.id,
+            "run_id": t.run_id,
+            "title": t.title,
+            "objective": getattr(t, "objective", None) or t.risk_reason,
+            "category": t.category,
+            "priority": t.priority,
+            "priority_score": t.priority_score,
+            "status": t.status,
+            "duration_sec": exec_item.duration_sec if exec_item else 0.0,
+            "retry_count": exec_item.retry_count if exec_item else 0,
+            "preconditions": t.preconditions,
+            "steps": t.steps,
+            "test_data": getattr(t, "test_data", {}) or {},
+            "assertions": t.assertions,
+            "expectation_source": getattr(t, "expectation_source", "deterministic_invariant") or "deterministic_invariant",
+            "baseline_id": getattr(t, "baseline_id", None),
             "actual_observations": exec_item.actual_observations if exec_item else None,
             "assertion_results": exec_item.assertion_results if exec_item else [],
             "screenshot_urls": screenshot_urls,
@@ -286,9 +446,49 @@ def get_run_tests(run_id: str, db: Session = Depends(get_db)):
             "finding_id": finding_item.id if finding_item else None,
             "risk_reason": t.risk_reason,
             "curiosity_breakdown": t.curiosity_breakdown,
-            "regression_eligible": t.regression_eligible
+            "regression_eligible": t.regression_eligible,
+            "created_at": t.created_at.isoformat() if t.created_at else None
         })
+
     return results
+
+@api_router.get("/test-cases/{test_id}")
+def get_test_case_detail(test_id: str, db: Session = Depends(get_db)):
+    t = db.query(TestCase).filter(TestCase.id == test_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Test case not found")
+    exec_item = db.query(TestExecution).filter(TestExecution.test_case_id == t.id).first()
+    finding_item = db.query(BugFinding).filter(BugFinding.test_execution_id == (exec_item.id if exec_item else "")).first()
+    screenshot_urls = [f"/api/v1/artifacts/{s_id}" for s_id in (exec_item.screenshot_ids if exec_item else [])]
+
+    return {
+        "id": t.id,
+        "test_case_id": t.id,
+        "run_id": t.run_id,
+        "title": t.title,
+        "objective": getattr(t, "objective", None) or t.risk_reason,
+        "category": t.category,
+        "priority": t.priority,
+        "priority_score": t.priority_score,
+        "status": t.status,
+        "duration_sec": exec_item.duration_sec if exec_item else 0.0,
+        "retry_count": exec_item.retry_count if exec_item else 0,
+        "preconditions": t.preconditions,
+        "steps": t.steps,
+        "test_data": getattr(t, "test_data", {}) or {},
+        "assertions": t.assertions,
+        "expectation_source": getattr(t, "expectation_source", "deterministic_invariant") or "deterministic_invariant",
+        "baseline_id": getattr(t, "baseline_id", None),
+        "actual_observations": exec_item.actual_observations if exec_item else None,
+        "assertion_results": exec_item.assertion_results if exec_item else [],
+        "screenshot_urls": screenshot_urls,
+        "console_logs": exec_item.console_logs if exec_item else [],
+        "finding_id": finding_item.id if finding_item else None,
+        "risk_reason": t.risk_reason,
+        "curiosity_breakdown": t.curiosity_breakdown,
+        "regression_eligible": t.regression_eligible,
+        "created_at": t.created_at.isoformat() if t.created_at else None
+    }
 
 # ----------------- Exploration & Site Map -----------------
 
@@ -317,9 +517,8 @@ def get_run_site_map(run_id: str, db: Session = Depends(get_db)):
     edges = []
     visited_urls = set()
 
-    for idx, p in enumerate(pages):
+    for p in pages:
         visited_urls.add(p.url)
-        # Find tests targeting this page or category
         associated_tests = [t.title for t in tests if (t.category.lower() in p.url.lower()) or (p.title and t.category in p.title)]
         nodes.append({
             "id": p.id,
@@ -329,8 +528,6 @@ def get_run_site_map(run_id: str, db: Session = Depends(get_db)):
             "controls_count": len(p.discovered_controls or []),
             "associated_tests": associated_tests
         })
-
-        # Add edges
         for link in (p.navigation_links or []):
             edges.append({
                 "source": p.id,
@@ -351,13 +548,19 @@ def get_run_site_map(run_id: str, db: Session = Depends(get_db)):
 def list_bug_findings(
     severity: Optional[str] = None,
     status: Optional[str] = None,
+    category: Optional[str] = None,
+    run_id: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
     query = db.query(BugFinding)
+    if run_id:
+        query = query.filter(BugFinding.run_id == run_id)
     if severity:
         query = query.filter(BugFinding.severity == severity)
     if status:
         query = query.filter(BugFinding.status == status)
+    if category:
+        query = query.filter(BugFinding.category == category)
     
     findings = query.order_by(BugFinding.created_at.desc()).all()
     return [
@@ -365,19 +568,33 @@ def list_bug_findings(
             id=f.id,
             run_id=f.run_id,
             test_execution_id=f.test_execution_id,
+            dedup_key=f.dedup_key,
             title=f.title,
             description=f.description,
             affected_url=f.affected_url,
+            category=getattr(f, "category", "Functional behavior and navigation") or "Functional behavior and navigation",
             severity=f.severity,
             severity_reason=f.severity_reason,
             status=f.status,
             confidence_score=f.confidence_score,
+            trust_score=getattr(f, "trust_score", f.confidence_score) or f.confidence_score,
+            trust_breakdown=getattr(f, "trust_breakdown", {}) or {},
             verification_notes=f.verification_notes,
             expected_behavior=f.expected_behavior,
+            expectation_source=getattr(f, "expectation_source", "Deterministic Invariant") or "Deterministic Invariant",
+            expectation_justification=getattr(f, "expectation_justification", None),
             actual_behavior=f.actual_behavior,
             reproduction_steps=f.reproduction_steps or [],
+            reproduction_attempts=getattr(f, "reproduction_attempts", 1) or 1,
+            reproduction_outcomes=getattr(f, "reproduction_outcomes", []) or [],
+            detection_method=getattr(f, "detection_method", "deterministic_assertion") or "deterministic_assertion",
+            likely_cause_hypothesis=getattr(f, "likely_cause_hypothesis", None),
+            suggested_fix=getattr(f, "suggested_fix", None),
+            alternative_explanations=getattr(f, "alternative_explanations", None),
             screenshot_url=f.screenshot_url,
             console_errors=f.console_errors or [],
+            network_status=getattr(f, "network_status", {}) or {},
+            regression_test_id=getattr(f, "regression_test_id", None),
             replay_attempts=f.replay_attempts,
             created_at=f.created_at.isoformat()
         )
@@ -393,56 +610,46 @@ def get_bug_finding(bug_id: str, db: Session = Depends(get_db)):
         id=f.id,
         run_id=f.run_id,
         test_execution_id=f.test_execution_id,
+        dedup_key=f.dedup_key,
         title=f.title,
         description=f.description,
         affected_url=f.affected_url,
+        category=getattr(f, "category", "Functional behavior and navigation") or "Functional behavior and navigation",
         severity=f.severity,
         severity_reason=f.severity_reason,
         status=f.status,
         confidence_score=f.confidence_score,
+        trust_score=getattr(f, "trust_score", f.confidence_score) or f.confidence_score,
+        trust_breakdown=getattr(f, "trust_breakdown", {}) or {},
         verification_notes=f.verification_notes,
         expected_behavior=f.expected_behavior,
+        expectation_source=getattr(f, "expectation_source", "Deterministic Invariant") or "Deterministic Invariant",
+        expectation_justification=getattr(f, "expectation_justification", None),
         actual_behavior=f.actual_behavior,
         reproduction_steps=f.reproduction_steps or [],
+        reproduction_attempts=getattr(f, "reproduction_attempts", 1) or 1,
+        reproduction_outcomes=getattr(f, "reproduction_outcomes", []) or [],
+        detection_method=getattr(f, "detection_method", "deterministic_assertion") or "deterministic_assertion",
+        likely_cause_hypothesis=getattr(f, "likely_cause_hypothesis", None),
+        suggested_fix=getattr(f, "suggested_fix", None),
+        alternative_explanations=getattr(f, "alternative_explanations", None),
         screenshot_url=f.screenshot_url,
         console_errors=f.console_errors or [],
+        network_status=getattr(f, "network_status", {}) or {},
+        regression_test_id=getattr(f, "regression_test_id", None),
         replay_attempts=f.replay_attempts,
         created_at=f.created_at.isoformat()
     )
 
 @api_router.get("/runs/{run_id}/bugs", response_model=List[BugFindingResponse])
 def get_run_bugs(run_id: str, db: Session = Depends(get_db)):
-    findings = db.query(BugFinding).filter(BugFinding.run_id == run_id).all()
-    return [
-        BugFindingResponse(
-            id=f.id,
-            run_id=f.run_id,
-            test_execution_id=f.test_execution_id,
-            title=f.title,
-            description=f.description,
-            affected_url=f.affected_url,
-            severity=f.severity,
-            severity_reason=f.severity_reason,
-            status=f.status,
-            confidence_score=f.confidence_score,
-            verification_notes=f.verification_notes,
-            expected_behavior=f.expected_behavior,
-            actual_behavior=f.actual_behavior,
-            reproduction_steps=f.reproduction_steps or [],
-            screenshot_url=f.screenshot_url,
-            console_errors=f.console_errors or [],
-            replay_attempts=f.replay_attempts,
-            created_at=f.created_at.isoformat()
-        )
-        for f in findings
-    ]
+    return list_bug_findings(run_id=run_id, db=db)
 
 # ----------------- Artifact Evidence Serving -----------------
 
 @api_router.get("/artifacts/{artifact_id}")
 def get_artifact(artifact_id: str, db: Session = Depends(get_db)):
     art = db.query(Artifact).filter(Artifact.id == artifact_id).first()
-    # If not in DB, search artifacts dir directly for safety
     if not art:
         for f in os.listdir(settings.ARTIFACTS_DIR):
             if artifact_id in f:
@@ -462,6 +669,69 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)):
 
     return FileResponse(target_path, media_type=art.content_type or "image/png", filename=art.file_name)
 
+# ----------------- Behavioral Baselines -----------------
+
+@api_router.get("/baselines", response_model=List[BaselineResponse])
+def list_baselines(db: Session = Depends(get_db)):
+    ensure_seeded_baselines(db)
+    baselines = db.query(BehavioralBaseline).order_by(BehavioralBaseline.created_at.desc()).all()
+    return [
+        BaselineResponse(
+            id=b.id,
+            name=b.name,
+            target_domain=b.target_domain,
+            category=b.category,
+            source_type=b.source_type,
+            version=b.version,
+            rule_definition=b.rule_definition or {},
+            expected_state=b.expected_state or {},
+            is_approved=b.is_approved,
+            notes=b.notes,
+            created_at=b.created_at.isoformat()
+        )
+        for b in baselines
+    ]
+
+@api_router.post("/baselines", response_model=BaselineResponse)
+def create_baseline(req: BaselineCreateRequest, db: Session = Depends(get_db)):
+    baseline_id = f"bl-{uuid.uuid4().hex[:8]}"
+    baseline = BehavioralBaseline(
+        id=baseline_id,
+        name=req.name,
+        target_domain=req.target_domain,
+        category=req.category,
+        source_type=req.source_type,
+        version=req.version,
+        rule_definition=req.rule_definition,
+        expected_state=req.expected_state,
+        is_approved=req.is_approved,
+        notes=req.notes
+    )
+    db.add(baseline)
+    db.commit()
+    return BaselineResponse(
+        id=baseline.id,
+        name=baseline.name,
+        target_domain=baseline.target_domain,
+        category=baseline.category,
+        source_type=baseline.source_type,
+        version=baseline.version,
+        rule_definition=baseline.rule_definition,
+        expected_state=baseline.expected_state,
+        is_approved=baseline.is_approved,
+        notes=baseline.notes,
+        created_at=baseline.created_at.isoformat()
+    )
+
+@api_router.post("/baselines/{baseline_id}/approve")
+def approve_baseline(baseline_id: str, db: Session = Depends(get_db)):
+    b = db.query(BehavioralBaseline).filter(BehavioralBaseline.id == baseline_id).first()
+    if not b:
+        raise HTTPException(status_code=404, detail="Baseline not found")
+    b.is_approved = True
+    db.commit()
+    return {"id": b.id, "name": b.name, "is_approved": True, "message": "Baseline expectation approved."}
+
 # ----------------- Regression Tests -----------------
 
 @api_router.get("/regression-tests", response_model=List[RegressionTestResponse])
@@ -474,6 +744,8 @@ def list_regression_tests(db: Session = Depends(get_db)):
             target_url=rt.target_url,
             original_run_id=rt.original_run_id,
             original_test_id=rt.original_test_id,
+            provenance=getattr(rt, "provenance", "passing_journey") or "passing_journey",
+            is_approved=getattr(rt, "is_approved", True),
             steps_count=len(rt.structured_steps or []),
             assertions_count=len(rt.assertions or []),
             created_at=rt.created_at.isoformat(),
@@ -502,6 +774,8 @@ def save_regression_test(
         target_url=run.target_url if run else "",
         original_run_id=run_id,
         original_test_id=tc.id,
+        provenance="passing_journey",
+        is_approved=True,
         structured_steps=tc.steps,
         expected_outcomes=tc.expected_results,
         assertions=tc.assertions,
@@ -513,9 +787,17 @@ def save_regression_test(
 
     return {"id": reg_id, "message": f"Successfully saved '{tc.title}' as reusable regression test."}
 
+@api_router.post("/regression-tests/{test_id}/approve")
+def approve_regression_test(test_id: str, db: Session = Depends(get_db)):
+    rt = db.query(RegressionTest).filter(RegressionTest.id == test_id).first()
+    if not rt:
+        raise HTTPException(status_code=404, detail="Regression test not found")
+    rt.is_approved = not rt.is_approved
+    db.commit()
+    return {"id": rt.id, "is_approved": rt.is_approved, "message": f"Regression test approval toggled to {rt.is_approved}"}
+
 @api_router.post("/regression-tests/run-all")
 async def rerun_all_regression_tests(db: Session = Depends(get_db)):
-    """Executes all saved regression tests sequentially and calculates regression diffs."""
     tests = db.query(RegressionTest).all()
     if not tests:
         return {
@@ -626,7 +908,6 @@ async def rerun_regression_test(test_id: str, db: Session = Depends(get_db)):
         new_status = result["status"]
         prev_status = reg_test.last_status
 
-        # Compare historical results
         if prev_status == "Passed" and new_status == "Failed":
             diff = f"REGRESSION DETECTED! Previously PASSED, now FAILED ({result.get('execution_error') or 'Assertion failed'})."
         elif prev_status == "Failed" and new_status == "Passed":
@@ -665,62 +946,68 @@ async def rerun_regression_test(test_id: str, db: Session = Depends(get_db)):
 # ----------------- Planted-Bug Benchmark & Quality Metrics -----------------
 
 @api_router.get("/benchmark/ground-truth")
-def get_benchmark_ground_truth():
-    from backend.app.services.benchmark_service import SEEDED_GROUND_TRUTH, BENCHMARK_JOURNEYS
-    return {
-        "planted_defects": SEEDED_GROUND_TRUTH,
-        "benchmark_journeys": BENCHMARK_JOURNEYS,
-        "total_planted": len(SEEDED_GROUND_TRUTH),
-        "total_journeys": len(BENCHMARK_JOURNEYS)
-    }
+def get_benchmark_ground_truth(suite: str = Query("devstore", description="'devstore' or 'assessment'")):
+    return BenchmarkService.get_suite_registry(suite)
 
 @api_router.get("/benchmark/results/{run_id}")
-def get_run_benchmark_results(run_id: str, db: Session = Depends(get_db)):
-    from backend.app.services.benchmark_service import BenchmarkService
+def get_run_benchmark_results(
+    run_id: str,
+    suite: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
     try:
-        report = BenchmarkService.evaluate_run(db, run_id)
+        report = BenchmarkService.evaluate_run(db, run_id, suite=suite)
         return report
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e))
 
 @api_router.post("/benchmark/run")
 async def execute_benchmark_suite(
-    target_url: str = Query("http://127.0.0.1:5001", description="Benchmark target web application"),
+    suite: str = Query("devstore", description="'devstore' or 'assessment'"),
+    target_url: Optional[str] = Query(None, description="Optional target URL override"),
     db: Session = Depends(get_db)
 ):
     """
-    Executes a complete benchmark run against the target application,
-    evaluates findings against the ground truth defect registry, and returns calculated quality metrics.
+    Executes a benchmark suite (DevStore or Assessment Platform) against the controlled local environment,
+    evaluates findings dynamically against isolated ground truth, and returns calculated quality metrics.
     """
-    from backend.app.services.benchmark_service import BenchmarkService
+    is_assessment = str(suite).lower() in ("assessment", "assess", "imocha")
+    default_url = "http://127.0.0.1:5001/assessment" if is_assessment else "http://127.0.0.1:5001"
+    resolved_url = target_url or default_url
 
-    # 1. Reset demo state if target is local DevStore
-    if "5001" in target_url or "devstore" in target_url:
-        try:
-            import httpx
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post("http://127.0.0.1:5001/api/reset")
-        except Exception:
-            pass
+    # Reset sample app state
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post("http://127.0.0.1:5001/api/reset")
+    except Exception:
+        pass
 
-    # 2. Launch autonomous QA run
     run_id = f"bench-{uuid.uuid4().hex[:8]}"
+    desc = (
+        "Autonomous Assessment Benchmark: Verify candidate access code format, answer persistence across refresh, double submission idempotency, answer key scoring, and recruiter access controls against ground truth."
+        if is_assessment else
+        "Autonomous DevStore Benchmark: Verify e-commerce catalog, form validation, cart arithmetic, checkout idempotency, and access controls against planted ground truth."
+    )
+
     run = TestRun(
         id=run_id,
-        target_url=target_url,
-        description="Autonomous Benchmark Evaluation: Verify e-commerce catalog, form validation, cart arithmetic, checkout idempotency, and access controls against planted ground truth.",
+        target_url=resolved_url,
+        description=desc,
         status="created",
         mode="demo",
+        test_mode="deep_verification",
+        baseline_profile="assessment_profile" if is_assessment else "ecommerce_profile",
         objectives=["Functional testing", "Form validation", "Business-rule testing", "Negative testing"]
     )
     db.add(run)
     db.commit()
 
-    # Execute synchronously to produce immediate verified benchmark result
+    # Execute synchronously for immediate benchmark results
     await RunController.execute_run_task(run_id)
 
-    # 3. Evaluate results against ground-truth registry
-    eval_report = BenchmarkService.evaluate_run(db, run_id)
+    # Evaluate against ground truth
+    eval_report = BenchmarkService.evaluate_run(db, run_id, suite="assessment" if is_assessment else "devstore")
     return eval_report
 
 # ----------------- Report Exporting -----------------
@@ -741,12 +1028,20 @@ def export_bug_report(
     finding_dict = {
         "id": finding.id,
         "title": finding.title,
+        "category": getattr(finding, "category", "Functional behavior and navigation"),
         "severity": finding.severity,
+        "severity_reason": finding.severity_reason,
         "status": finding.status,
+        "trust_score": getattr(finding, "trust_score", finding.confidence_score),
         "affected_url": finding.affected_url,
         "expected_behavior": finding.expected_behavior,
+        "expectation_source": getattr(finding, "expectation_source", "Deterministic Invariant"),
         "actual_behavior": finding.actual_behavior,
         "reproduction_steps": finding.reproduction_steps or [],
+        "reproduction_attempts": getattr(finding, "reproduction_attempts", 1),
+        "likely_cause_hypothesis": getattr(finding, "likely_cause_hypothesis", None),
+        "suggested_fix": getattr(finding, "suggested_fix", None),
+        "alternative_explanations": getattr(finding, "alternative_explanations", None),
         "screenshot_url": finding.screenshot_url,
         "verification_notes": finding.verification_notes,
         "replay_attempts": finding.replay_attempts,
@@ -792,8 +1087,10 @@ def export_run_report(
         {
             "id": f.id,
             "title": f.title,
+            "category": getattr(f, "category", "Functional behavior and navigation"),
             "severity": f.severity,
             "status": f.status,
+            "trust_score": getattr(f, "trust_score", f.confidence_score),
             "reproduction_steps": f.reproduction_steps,
             "expected": f.expected_behavior,
             "actual": f.actual_behavior
@@ -812,6 +1109,7 @@ def export_run_report(
         "description": run.description,
         "status": run.status,
         "mode": run.mode,
+        "test_mode": getattr(run, "test_mode", "universal_exploratory"),
         "duration_sec": run.duration_sec,
         "total_tests": run.total_tests,
         "passed_count": run.passed_count,

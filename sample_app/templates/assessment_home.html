@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Assessment Platform — Candidate Assignment Portal{% endblock %}
+
+{% block content %}
+<div style="max-width: 600px; margin: 3rem auto; background: white; padding: 2.5rem; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+  <div style="text-align: center; margin-bottom: 2rem;">
+    <div style="width: 48px; height: 48px; border-radius: 10px; background: #e0e7ff; color: #4338ca; display: inline-flex; align-items: center; justify-content: center; font-size: 1.5rem; margin-bottom: 0.75rem;">
+      ✦
+    </div>
+    <h1 style="font-size: 1.5rem; font-weight: 700; color: #111827;" id="assessment-portal-title">Candidate Assessment Portal</h1>
+    <p style="color: #6b7280; font-size: 0.9rem; margin-top: 0.25rem;">
+      Simulated Hiring & Skills Assessment Benchmark Environment
+    </p>
+  </div>
+
+  {% if error %}
+  <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem; margin-bottom: 1.5rem;" id="assessment-error">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <form action="/assessment/start" method="POST" id="form-assessment-start">
+    <div style="margin-bottom: 1.25rem;">
+      <label for="candidate_name" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">Full Name</label>
+      <input type="text" id="candidate_name" name="candidate_name" value="{{ candidate_name or 'Jordan Reed' }}" required style="width: 100%; padding: 0.65rem 0.85rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem;">
+    </div>
+
+    <div style="margin-bottom: 1.25rem;">
+      <label for="candidate_email" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">Candidate Email</label>
+      <input type="email" id="candidate_email" name="candidate_email" value="{{ candidate_email or 'jordan.reed@example.com' }}" required style="width: 100%; padding: 0.65rem 0.85rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem;">
+    </div>
+
+    <div style="margin-bottom: 1.75rem;">
+      <label for="access_code" style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem; color: #374151;">
+        Assessment Invitation Code (6 characters required: e.g. <code>AIM-2026</code>)
+      </label>
+      <input type="text" id="access_code" name="access_code" value="AIM-2026" required placeholder="Enter invitation code" style="width: 100%; padding: 0.65rem 0.85rem; border: 1px solid #d1d5db; border-radius: 6px; font-size: 0.95rem; font-family: monospace;">
+      <span style="font-size: 0.75rem; color: #6b7280; display: block; margin-top: 0.35rem;">
+        Invariant: Single character or malformed codes must be rejected.
+      </span>
+    </div>
+
+    <button type="submit" id="btn-start-assessment" style="width: 100%; padding: 0.75rem 1.25rem; background: #1f2937; color: white; border: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; cursor: pointer; transition: background 0.15s;">
+      Start Assessment &rarr;
+    </button>
+  </form>
+
+  <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid var(--border); text-align: center;">
+    <a href="/assessment/recruiter/results" id="link-recruiter-portal" style="font-size: 0.85rem; color: #4338ca; text-decoration: none; font-weight: 500;">
+      Recruiter Assessment Portal &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}

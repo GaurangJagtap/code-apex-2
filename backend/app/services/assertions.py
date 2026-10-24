@@ -1,10 +1,12 @@
+import re
 from typing import Dict, Any, List, Optional
 from playwright.async_api import Page
 
 class AssertionEngine:
     """
     Deterministic Assertion Engine for reliable, evidence-backed evaluation
-    of application behavior against explicit user expectations.
+    of application behavior against explicit user expectations, business rules,
+    and mathematical invariants.
     """
     @staticmethod
     async def evaluate_assertion(page: Page, assertion: Dict[str, Any]) -> Dict[str, Any]:
@@ -35,7 +37,7 @@ class AssertionEngine:
                     actual = f"Element '{target}' visible: {visible}"
 
             elif a_type == "text_contains":
-                if target and target.startswith(("#", ".", "[", "body", "h1", "h2", "h3", "p", "div", "span")):
+                if target and target.startswith(("#", ".", "[", "body", "h1", "h2", "h3", "p", "div", "span", "table", "tr", "td", "li")):
                     loc = page.locator(target).first
                     if await loc.count() > 0:
                         text_val = await loc.inner_text(timeout=3000)
@@ -44,17 +46,22 @@ class AssertionEngine:
                 else:
                     text_val = await page.content()
                 
-                passed = expected.lower() in text_val.lower()
-                actual = f"Found text segment in page: {passed}"
+                passed = str(expected).lower() in text_val.lower()
+                actual = f"Found text segment '{expected}' in target: {passed}"
+
+            elif a_type == "text_not_contains":
+                content = await page.content()
+                passed = str(expected).lower() not in content.lower()
+                actual = f"Text segment '{expected}' absent: {passed}"
 
             elif a_type == "url_contains":
                 curr_url = page.url
-                passed = expected.lower() in curr_url.lower()
+                passed = str(expected).lower() in curr_url.lower()
                 actual = f"Current URL is '{curr_url}', expected to contain '{expected}'"
 
             elif a_type == "url_not_contains":
                 curr_url = page.url
-                passed = expected.lower() not in curr_url.lower()
+                passed = str(expected).lower() not in curr_url.lower()
                 actual = f"Current URL is '{curr_url}', expected NOT to contain '{expected}'"
 
             elif a_type == "value_matches":
@@ -65,21 +72,21 @@ class AssertionEngine:
 
             elif a_type == "cart_total_matches":
                 # Verifies arithmetic equality: subtotal = price * quantity
-                # e.g., target is unit price selector, expected is quantity * price
                 loc_subtotal = page.locator("#cart-subtotal").first
-                subtotal_text = await loc_subtotal.inner_text()
-                # Parse numeric value from "$129.99"
-                import re
-                nums = re.findall(r"[\d\.]+", subtotal_text)
-                if nums:
-                    val = float(nums[0])
-                    expected_float = float(expected)
-                    # Allow 0.05 margin for currency
-                    passed = abs(val - expected_float) < 0.05
-                    actual = f"Subtotal displayed ${val:.2f}, expected ${expected_float:.2f}"
+                if await loc_subtotal.count() > 0:
+                    subtotal_text = await loc_subtotal.inner_text()
+                    nums = re.findall(r"[\d\.]+", subtotal_text)
+                    if nums:
+                        val = float(nums[0])
+                        expected_float = float(expected)
+                        passed = abs(val - expected_float) < 0.05
+                        actual = f"Subtotal displayed ${val:.2f}, expected ${expected_float:.2f}"
+                    else:
+                        passed = False
+                        actual = f"Unable to parse subtotal numeric value from '{subtotal_text}'"
                 else:
                     passed = False
-                    actual = f"Unable to parse subtotal from '{subtotal_text}'"
+                    actual = "Cart subtotal element '#cart-subtotal' not found on page"
 
             elif a_type == "element_disabled":
                 loc = page.locator(target).first
@@ -101,6 +108,30 @@ class AssertionEngine:
                     passed = False
                     actual = f"Element '{target}' not found"
 
+            elif a_type == "element_count":
+                loc = page.locator(target)
+                count = await loc.count()
+                expected_count = int(expected)
+                passed = (count == expected_count)
+                actual = f"Element count for '{target}' is {count}, expected {expected_count}"
+
+            elif a_type == "state_persists_on_refresh":
+                # Verifies target element still holds expected value or text
+                loc = page.locator(target).first
+                if await loc.count() > 0:
+                    tag = await loc.evaluate("el => el.tagName.toLowerCase()")
+                    if tag in ("input", "textarea", "select"):
+                        val = await loc.input_value()
+                        passed = str(expected).strip() in str(val).strip()
+                        actual = f"State after refresh was '{val}', expected '{expected}'"
+                    else:
+                        text_val = await loc.inner_text()
+                        passed = str(expected).lower() in text_val.lower()
+                        actual = f"Text after refresh was '{text_val}', expected '{expected}'"
+                else:
+                    passed = False
+                    actual = f"Target '{target}' not found after refresh"
+
             else:
                 passed = False
                 actual = f"Unknown assertion type '{a_type}'"
@@ -113,7 +144,7 @@ class AssertionEngine:
         return {
             "type": a_type,
             "target": target,
-            "expected": expected,
+            "expected": str(expected),
             "actual": actual,
             "passed": passed,
             "message": message,

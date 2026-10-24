@@ -81,6 +81,72 @@ export interface TestCaseExecution {
   regression_eligible?: boolean;
 }
 
+export interface TestCaseDetail {
+  id: string;
+  run_id: string;
+  title: string;
+  objective?: string;
+  category: string;
+  priority: string;
+  preconditions?: string;
+  test_data?: Record<string, any>;
+  cleanup_requirements?: string;
+  expectation_source?: string;
+  expected_result?: string;
+  baseline_id?: string;
+  risk_level?: string;
+  why_it_matters?: string;
+  evidence_needed?: string;
+  execution?: {
+    id: string;
+    status: string;
+    duration_sec: number;
+    steps: Array<{ action: string; selector?: string; value?: string; description: string }>;
+    assertions: Array<{ type: string; target: string; expected?: string; message?: string }>;
+    assertion_results: Array<{ type: string; passed: boolean; actual: string; message: string }>;
+    actual_observations?: string;
+    network_observations?: Array<Record<string, any>>;
+    console_logs: string[];
+    screenshot_urls: string[];
+    finding_id?: string;
+    regression_eligible?: boolean;
+    curiosity_breakdown?: {
+      impact: number;
+      uncertainty: number;
+      novelty: number;
+      coverage_gap: number;
+      priority_score: number;
+      reasoning: string;
+    };
+  };
+  related_bugs?: BugFinding[];
+  saved_regression?: RegressionTest;
+}
+
+export interface BehavioralBaseline {
+  id: string;
+  title: string;
+  domain: string;
+  category: string;
+  rule_type: string;
+  version: string;
+  source: string;
+  expected_behavior: string;
+  invariant_rule?: string;
+  is_approved: boolean;
+  created_at: string;
+}
+
+export interface BaselineCreatePayload {
+  title: string;
+  domain: string;
+  category: string;
+  rule_type: string;
+  expected_behavior: string;
+  invariant_rule?: string;
+  source?: string;
+}
+
 export interface BugFinding {
   id: string;
   run_id: string;
@@ -88,16 +154,44 @@ export interface BugFinding {
   title: string;
   description: string;
   affected_url: string;
+  category?: string;
   severity: 'Critical' | 'High' | 'Medium' | 'Low';
   severity_reason?: string;
-  status: 'Verified' | 'Likely' | 'Inconclusive' | 'Not reproduced' | 'Confirmed' | 'Suspected' | 'Not Reproducible';
+  status: 'Confirmed' | 'Suspected' | 'Inconclusive' | 'Dismissed' | 'Verified' | 'Likely' | 'Not reproduced' | 'Not Reproducible';
   confidence_score: number;
+  trust_score?: number;
+  trust_breakdown?: {
+    expectation_strength?: number;
+    evidence_completeness?: number;
+    reproducibility?: number;
+    deterministic_verification?: number;
+    alternative_explanations_penalty?: number;
+    total_trust_score?: number;
+    rationale?: string;
+    signals?: string[];
+  };
   verification_notes?: string;
   expected_behavior: string;
   actual_behavior: string;
-  reproduction_steps: string[];
+  expectation_source?: string;
+  expectation_justification?: string;
+  detection_method?: string;
+  likely_cause_hypothesis?: string;
+  suggested_fix?: string;
+  alternative_explanations?: string[] | string;
+  reproduction_steps: string[] | string;
+  reproduction_outcomes?: Array<{
+    attempt: number;
+    passed?: boolean;
+    clean_context?: boolean;
+    outcome?: string;
+    status?: string;
+    timestamp?: string;
+  }> | string;
   screenshot_url?: string;
-  console_errors: string[];
+  console_errors: string[] | string;
+  network_status?: Record<string, any>;
+  regression_test_id?: string;
   replay_attempts: number;
   created_at: string;
 }
@@ -114,6 +208,9 @@ export interface RegressionTest {
   last_run_at?: string;
   last_status: string;
   executions_count: number;
+  is_approved?: boolean;
+  approval_status?: string;
+  provenance?: string;
 }
 
 export interface RegressionRunResult {
@@ -222,6 +319,8 @@ export const createRun = (data: {
   objectives: string[];
   boundaries?: Record<string, any>;
   mode?: string;
+  test_mode?: string;
+  baseline_profile?: string;
 }) => api.post<{ run_id: string; status: string; mode: string }>('/runs', data).then(res => res.data);
 
 export const fetchRuns = () => api.get<RunSummary[]>('/runs').then(res => res.data);
@@ -232,7 +331,30 @@ export const fetchRunExploration = (id: string) => api.get<ExploredPage[]>(`/run
 export const fetchRunSiteMap = (id: string) => api.get<{ nodes: any[]; edges: any[]; total_nodes: number; total_edges: number }>(`/runs/${id}/site-map`).then(res => res.data);
 export const cancelRun = (id: string) => api.post(`/runs/${id}/cancel`).then(res => res.data);
 
-export const fetchBugs = (params?: { severity?: string; status?: string }) =>
+// Test Cases API
+export const fetchTestCases = (params?: {
+  run_id?: string;
+  status?: string;
+  category?: string;
+  priority?: string;
+  source?: string;
+  search?: string;
+}) => api.get<TestCaseDetail[]>('/test-cases', { params }).then(res => res.data);
+
+export const fetchTestCase = (id: string) =>
+  api.get<TestCaseDetail>(`/test-cases/${id}`).then(res => res.data);
+
+// Baselines API
+export const fetchBaselines = (params?: { domain?: string; category?: string }) =>
+  api.get<BehavioralBaseline[]>('/baselines', { params }).then(res => res.data);
+
+export const createBaseline = (payload: BaselineCreatePayload) =>
+  api.post<BehavioralBaseline>('/baselines', payload).then(res => res.data);
+
+export const approveBaseline = (id: string) =>
+  api.post<{ message: string; id: string }>(`/baselines/${id}/approve`).then(res => res.data);
+
+export const fetchBugs = (params?: { severity?: string; status?: string; category?: string; search?: string }) =>
   api.get<BugFinding[]>('/bugs', { params }).then(res => res.data);
 export const fetchBug = (id: string) => api.get<BugFinding>(`/bugs/${id}`).then(res => res.data);
 export const fetchRunBugs = (runId: string) => api.get<BugFinding[]>(`/runs/${runId}/bugs`).then(res => res.data);
@@ -240,17 +362,19 @@ export const fetchRunBugs = (runId: string) => api.get<BugFinding[]>(`/runs/${ru
 export const fetchRegressionTests = () => api.get<RegressionTest[]>('/regression-tests').then(res => res.data);
 export const saveRegressionTest = (testId: string, runId: string) =>
   api.post<{ id: string; message: string }>(`/regression-tests?test_id=${testId}&run_id=${runId}`).then(res => res.data);
+export const approveRegressionTest = (testId: string) =>
+  api.post<{ message: string; id: string }>(`/regression-tests/${testId}/approve`).then(res => res.data);
 export const rerunRegressionTest = (testId: string) =>
   api.post<RegressionRunResult>(`/regression-tests/${testId}/run`).then(res => res.data);
 export const rerunAllRegressionTests = () =>
   api.post<RegressionSuiteResult>('/regression-tests/run-all').then(res => res.data);
 
-export const fetchBenchmarkGroundTruth = () =>
-  api.get<GroundTruthRegistry>('/benchmark/ground-truth').then(res => res.data);
-export const fetchRunBenchmarkResults = (runId: string) =>
-  api.get<BenchmarkReport>(`/benchmark/results/${runId}`).then(res => res.data);
-export const runBenchmarkSuite = (targetUrl: string = 'http://127.0.0.1:5001') =>
-  api.post<BenchmarkReport>(`/benchmark/run?target_url=${encodeURIComponent(targetUrl)}`).then(res => res.data);
+export const fetchBenchmarkGroundTruth = (suite: string = 'devstore') =>
+  api.get<GroundTruthRegistry>(`/benchmark/ground-truth?suite=${encodeURIComponent(suite)}`).then(res => res.data);
+export const fetchRunBenchmarkResults = (runId: string, suite: string = 'devstore') =>
+  api.get<BenchmarkReport>(`/benchmark/results/${runId}?suite=${encodeURIComponent(suite)}`).then(res => res.data);
+export const runBenchmarkSuite = (targetUrl: string = 'http://127.0.0.1:5001', suite: string = 'devstore') =>
+  api.post<BenchmarkReport>(`/benchmark/run?target_url=${encodeURIComponent(targetUrl)}&suite=${encodeURIComponent(suite)}`).then(res => res.data);
 
 // Sample App Defect Toggle Helper (Direct to sample app 5001 or through proxy)
 export const fetchSampleAppDefects = () =>

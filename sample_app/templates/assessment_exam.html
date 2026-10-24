@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}Software Engineering Assessment — Examination in Progress{% endblock %}
+
+{% block content %}
+<div style="max-width: 800px; margin: 2rem auto;">
+  <!-- Test Top Bar -->
+  <div style="background: white; padding: 1.25rem 1.75rem; border-radius: 12px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+    <div>
+      <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #4338ca; font-weight: 700; background: #e0e7ff; padding: 0.2rem 0.5rem; border-radius: 4px;">
+        Assessment Benchmark IM-02
+      </span>
+      <h2 style="font-size: 1.25rem; font-weight: 700; color: #111827; margin-top: 0.35rem;" id="assessment-exam-title">
+        Full-Stack & QA Engineering Assessment
+      </h2>
+      <div style="font-size: 0.85rem; color: #6b7280;">
+        Candidate: <strong id="candidate-display">{{ candidate.name }}</strong> ({{ candidate.email }})
+      </div>
+    </div>
+    <div style="text-align: right;">
+      <div style="font-size: 0.8rem; color: #6b7280;">Time Remaining</div>
+      <div style="font-size: 1.25rem; font-weight: 700; font-family: monospace; color: #047857;" id="assessment-timer">
+        42:15
+      </div>
+    </div>
+  </div>
+
+  <!-- State Recovery & Interruption Notice -->
+  <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 0.85rem 1.25rem; border-radius: 8px; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
+    <div style="font-size: 0.85rem; color: #166534;">
+      <strong>Session State:</strong> Answers are synchronized. Refreshing or recovering connection must persist your selected answers.
+    </div>
+    <a href="/assessment/test?refresh=1" id="btn-sim-refresh" style="font-size: 0.75rem; font-weight: 600; padding: 0.35rem 0.75rem; background: white; border: 1px solid #86efac; border-radius: 6px; color: #15803d; text-decoration: none;">
+      Simulate Page Refresh
+    </a>
+  </div>
+
+  <!-- Question Card Form -->
+  <form action="/assessment/submit" method="POST" id="form-assessment-submit">
+    <input type="hidden" name="candidate_email" value="{{ candidate.email }}">
+    <input type="hidden" name="candidate_name" value="{{ candidate.name }}">
+
+    <!-- Question 1 -->
+    <div class="question-card" id="card-question-1" style="background: white; padding: 1.75rem; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+        <span style="font-weight: 700; font-size: 0.95rem; color: #1f2937;">Question 1 of 3</span>
+        <span style="font-size: 0.8rem; color: #6b7280; background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 4px;">Data Structures</span>
+      </div>
+      <p style="font-size: 1rem; color: #111827; margin-bottom: 1rem; font-weight: 500;">
+        What is the average time complexity for searching an element in a balanced Binary Search Tree (BST)?
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q1" value="A" id="option-q1-a" {% if answers.get('q1') == 'A' %}checked{% endif %}>
+          <span>O(1) Constant Time</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q1" value="B" id="option-q1-b" {% if answers.get('q1') == 'B' or not answers.get('q1') %}checked{% endif %}>
+          <span><strong>O(log N) Logarithmic Time</strong> (Correct Answer)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q1" value="C" id="option-q1-c" {% if answers.get('q1') == 'C' %}checked{% endif %}>
+          <span>O(N) Linear Time</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Question 2 -->
+    <div class="question-card" id="card-question-2" style="background: white; padding: 1.75rem; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+        <span style="font-weight: 700; font-size: 0.95rem; color: #1f2937;">Question 2 of 3</span>
+        <span style="font-size: 0.8rem; color: #6b7280; background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 4px;">Software Quality & Testing</span>
+      </div>
+      <p style="font-size: 1rem; color: #111827; margin-bottom: 1rem; font-weight: 500;">
+        Which characteristic distinguishes a deterministic test assertion from probabilistic model opinion?
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q2" value="A" id="option-q2-a" {% if answers.get('q2') == 'A' or not answers.get('q2') %}checked{% endif %}>
+          <span><strong>Verifies explicit boolean invariants against exact state and DOM contracts</strong> (Correct)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q2" value="B" id="option-q2-b" {% if answers.get('q2') == 'B' %}checked{% endif %}>
+          <span>Relies entirely on subjective prompt interpretation</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q2" value="C" id="option-q2-c" {% if answers.get('q2') == 'C' %}checked{% endif %}>
+          <span>Accepts non-deterministic results without clean replays</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Question 3 -->
+    <div class="question-card" id="card-question-3" style="background: white; padding: 1.75rem; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1.5rem;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+        <span style="font-weight: 700; font-size: 0.95rem; color: #1f2937;">Question 3 of 3</span>
+        <span style="font-size: 0.8rem; color: #6b7280; background: #f3f4f6; padding: 0.15rem 0.5rem; border-radius: 4px;">System Architecture</span>
+      </div>
+      <p style="font-size: 1rem; color: #111827; margin-bottom: 1rem; font-weight: 500;">
+        What property guarantees that making the same network request multiple times produces the identical side-effect?
+      </p>
+      <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q3" value="A" id="option-q3-a" {% if answers.get('q3') == 'A' or not answers.get('q3') %}checked{% endif %}>
+          <span><strong>Idempotency</strong> (Correct Answer)</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q3" value="B" id="option-q3-b" {% if answers.get('q3') == 'B' %}checked{% endif %}>
+          <span>Concurrency</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer;">
+          <input type="radio" name="q3" value="C" id="option-q3-c" {% if answers.get('q3') == 'C' %}checked{% endif %}>
+          <span>Polymorphism</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div style="display: flex; justify-content: flex-end; gap: 1rem; margin-top: 1.5rem;">
+      <button type="submit" id="btn-submit-assessment" style="padding: 0.85rem 2rem; background: #047857; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 1rem; cursor: pointer;">
+        Submit Assessment
+      </button>
+    </div>
+  </form>
+</div>
+{% endblock %}

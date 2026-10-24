@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Recruiter Console — Candidate Assessment Evaluation Dashboard{% endblock %}
+
+{% block content %}
+<div style="max-width: 900px; margin: 2rem auto;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+      <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: #b45309; font-weight: 700; background: #fef3c7; padding: 0.2rem 0.5rem; border-radius: 4px;">
+        Recruiter Admin Workspace
+      </span>
+      <h1 style="font-size: 1.5rem; font-weight: 700; color: #111827; margin-top: 0.35rem;" id="recruiter-dashboard-title">
+        Assessment Evaluation & Candidate Results
+      </h1>
+      <p style="color: #6b7280; font-size: 0.85rem;">
+        Protected evaluation dashboard for verified hiring managers and technical recruiters.
+      </p>
+    </div>
+    <div>
+      <a href="/assessment" id="btn-back-candidate-portal" style="padding: 0.5rem 1rem; background: #f3f4f6; color: #374151; border-radius: 6px; text-decoration: none; font-size: 0.85rem; font-weight: 600;">
+        Candidate Portal
+      </a>
+    </div>
+  </div>
+
+  <div style="background: white; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+    <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 1rem; font-weight: 600; color: #111827;">Completed Candidate Submissions</h3>
+      <span style="font-size: 0.8rem; color: #6b7280;">{{ submissions|length }} submissions recorded</span>
+    </div>
+
+    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;" id="recruiter-candidates-table">
+      <thead>
+        <tr style="background: #f9fafb; text-align: left; color: #4b5563; border-bottom: 1px solid var(--border);">
+          <th style="padding: 0.75rem 1.5rem; font-weight: 600;">Candidate</th>
+          <th style="padding: 0.75rem 1.5rem; font-weight: 600;">Assessment</th>
+          <th style="padding: 0.75rem 1.5rem; font-weight: 600;">Score</th>
+          <th style="padding: 0.75rem 1.5rem; font-weight: 600;">Status</th>
+          <th style="padding: 0.75rem 1.5rem; font-weight: 600;">Submitted At</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in submissions %}
+        <tr style="border-bottom: 1px solid #f3f4f6;" class="candidate-result-row" id="row-{{ s.submission_id }}">
+          <td style="padding: 0.85rem 1.5rem;">
+            <div style="font-weight: 600; color: #111827;" class="candidate-name">{{ s.candidate_name }}</div>
+            <div style="font-size: 0.8rem; color: #6b7280;" class="candidate-email">{{ s.candidate_email }}</div>
+          </td>
+          <td style="padding: 0.85rem 1.5rem; color: #374151;">Full-Stack & QA Engineering</td>
+          <td style="padding: 0.85rem 1.5rem; font-weight: 700; color: #047857;" class="candidate-score">{{ s.score_percent }}</td>
+          <td style="padding: 0.85rem 1.5rem;">
+            <span style="font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem; border-radius: 4px; background: #ecfdf5; color: #047857;">
+              Completed
+            </span>
+          </td>
+          <td style="padding: 0.85rem 1.5rem; font-size: 0.8rem; color: #6b7280;">{{ s.submitted_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

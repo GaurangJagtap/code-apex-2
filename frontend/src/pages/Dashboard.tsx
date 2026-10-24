@@ -69,67 +69,84 @@ export const Dashboard: React.FC = () => {
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
       {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-[#064e3b] to-[#047857] text-white rounded-xl p-6 shadow-sm flex items-center justify-between">
+      <div className="bg-[hsl(var(--primary))] text-white rounded-2xl p-6 md:p-8 shadow-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
         <div>
-          <span className="bg-emerald-800 text-emerald-200 text-xs px-2.5 py-1 rounded-full font-semibold uppercase tracking-wider">
-            Autonomous Testing Engine
+          <span className="bg-white/10 text-[hsl(var(--accent))] border border-white/15 text-[11px] px-3 py-1 rounded-full font-medium uppercase tracking-wider inline-flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-[hsl(var(--accent))] animate-pulse" />
+            Autonomous QA Verification Engine
           </span>
-          <h2 className="text-2xl font-bold mt-2">Autonomous AI QA Verification Console</h2>
-          <p className="text-emerald-100 text-sm mt-1 max-w-2xl">
-            Explore web applications autonomously, decide what to test with the Curiosity Engine, execute browser journeys, and verify proof-carrying defects.
+          <h2 className="font-display text-3xl md:text-4xl font-normal mt-3 tracking-tight text-white">
+            Operational <span className="italic">Verification</span> Workspace
+          </h2>
+          <p className="text-white/70 text-xs md:text-sm mt-1 max-w-2xl leading-relaxed">
+            Autonomous exploration, curiosity-guided test planning, deterministic assertion execution, and evidence-backed defect verification with clean replay traces.
           </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-2.5 shrink-0">
+          <NavLink
+            to="/test-cases"
+            className="bg-white/10 border border-white/20 text-white font-medium px-4 py-2 rounded-lg text-xs hover:bg-white/20 transition flex items-center gap-1.5"
+          >
+            <span>All Test Cases</span>
+          </NavLink>
           <NavLink
             to="/benchmark"
-            className="bg-emerald-900/60 border border-emerald-400 text-white font-semibold px-4 py-2 rounded-lg text-sm hover:bg-emerald-800 transition shadow-sm flex items-center gap-2"
+            className="bg-white/10 border border-white/20 text-white font-medium px-4 py-2 rounded-lg text-xs hover:bg-white/20 transition flex items-center gap-1.5"
           >
-            <Award className="w-4 h-4 text-emerald-300" />
-            Benchmark Console
+            <Award className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
+            <span>Benchmarks</span>
           </NavLink>
           <NavLink
             to="/new-run"
-            className="bg-white text-[#064e3b] font-semibold px-4 py-2 rounded-lg text-sm hover:bg-emerald-50 transition shadow-sm flex items-center gap-2"
+            className="bg-[hsl(var(--accent))] text-white font-medium px-4 py-2 rounded-lg text-xs hover:bg-[hsl(var(--accent))]/90 transition shadow-xs flex items-center gap-1.5"
           >
-            <PlayCircle className="w-4 h-4 text-[#064e3b]" />
-            New Test Run
+            <PlayCircle className="w-3.5 h-3.5" />
+            <span>Launch Run</span>
           </NavLink>
         </div>
       </div>
 
       {/* Metrics KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-        <div className="bg-white p-5 rounded-xl border border-[#e2e8f0] shadow-sm">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">Total Runs</div>
-          <div className="text-3xl font-bold text-[#0f172a] mt-2">{totalRuns}</div>
-          <div className="text-xs text-[#047857] font-medium mt-1 flex items-center gap-1">
-            <Activity className="w-3.5 h-3.5" />
-            <span>Active Engine</span>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
+        <div className="bg-white p-4 md:p-5 rounded-xl border border-[hsl(var(--border))] shadow-xs">
+          <div className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Total Runs</div>
+          <div className="text-2xl md:text-3xl font-bold text-[hsl(var(--foreground))] mt-1.5 font-mono">{totalRuns}</div>
+          <div className="text-[11px] text-[hsl(var(--muted-foreground))] font-medium mt-1 flex items-center gap-1">
+            <Activity className="w-3 h-3 text-[hsl(var(--accent))]" />
+            <span>Recorded Sessions</span>
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-[#e2e8f0] shadow-sm">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">Tests Executed</div>
-          <div className="text-3xl font-bold text-[#0f172a] mt-2">{totalTestsExecuted}</div>
-          <div className="text-xs text-[#64748b] mt-1">Across all journeys</div>
+        <div className="bg-white p-4 md:p-5 rounded-xl border border-[hsl(var(--border))] shadow-xs">
+          <div className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Tests Executed</div>
+          <div className="text-2xl md:text-3xl font-bold text-[hsl(var(--foreground))] mt-1.5 font-mono">{totalTestsExecuted}</div>
+          <div className="text-[11px] text-[hsl(var(--muted-foreground))] mt-1">
+            <NavLink to="/test-cases" className="text-[hsl(var(--accent))] hover:underline font-medium">
+              View all cases →
+            </NavLink>
+          </div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-[#e2e8f0] shadow-sm">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">Confirmed Defects</div>
-          <div className="text-3xl font-bold text-[#dc2626] mt-2">{confirmedBugs}</div>
-          <div className="text-xs text-[#991b1b] font-medium mt-1">Verified with replay</div>
+        <div className="bg-white p-4 md:p-5 rounded-xl border border-[hsl(var(--border))] shadow-xs">
+          <div className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Confirmed Bugs</div>
+          <div className="text-2xl md:text-3xl font-bold text-rose-600 mt-1.5 font-mono">{confirmedBugs}</div>
+          <div className="text-[11px] text-rose-700 font-medium mt-1">Verified with replay</div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-[#e2e8f0] shadow-sm">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">Suspected Findings</div>
-          <div className="text-3xl font-bold text-[#d97706] mt-2">{suspectedBugs}</div>
-          <div className="text-xs text-[#92400e] font-medium mt-1">Under investigation</div>
+        <div className="bg-white p-4 md:p-5 rounded-xl border border-[hsl(var(--border))] shadow-xs">
+          <div className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Suspected Findings</div>
+          <div className="text-2xl md:text-3xl font-bold text-amber-600 mt-1.5 font-mono">{suspectedBugs}</div>
+          <div className="text-[11px] text-amber-700 font-medium mt-1">Under investigation</div>
         </div>
 
-        <div className="bg-white p-5 rounded-xl border border-[#e2e8f0] shadow-sm">
-          <div className="text-xs font-semibold text-[#64748b] uppercase tracking-wider">Regression Tests</div>
-          <div className="text-3xl font-bold text-[#065f46] mt-2">{regressionTests.length}</div>
-          <div className="text-xs text-[#047857] font-medium mt-1">Automated suites</div>
+        <div className="bg-white p-4 md:p-5 rounded-xl border border-[hsl(var(--border))] shadow-xs col-span-2 md:col-span-1">
+          <div className="text-[11px] font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider">Regression Tests</div>
+          <div className="text-2xl md:text-3xl font-bold text-[hsl(var(--foreground))] mt-1.5 font-mono">{regressionTests.length}</div>
+          <div className="text-[11px] text-[hsl(var(--muted-foreground))] font-medium mt-1">
+            <NavLink to="/regression" className="text-[hsl(var(--accent))] hover:underline font-medium">
+              Saved suites →
+            </NavLink>
+          </div>
         </div>
       </div>
 

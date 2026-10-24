@@ -24,6 +24,8 @@ class TestRun(Base):
     description = Column(Text, nullable=False)
     status = Column(String(50), default="created") # created, initializing, exploring, planning, executing, verifying, reporting, completed, failed, cancelling, cancelled
     mode = Column(String(20), default="demo") # demo or ai
+    test_mode = Column(String(50), default="universal_exploratory") # universal_exploratory or deep_verification
+    baseline_profile = Column(String(100), default="default")
     objectives = Column(JSON, default=list)
     boundaries = Column(JSON, default=dict)
     
@@ -69,14 +71,19 @@ class TestCase(Base):
     id = Column(String(50), primary_key=True, index=True)
     run_id = Column(String(50), ForeignKey("test_runs.id"), nullable=False, index=True)
     title = Column(String(300), nullable=False)
-    category = Column(String(100), default="Functional")
+    objective = Column(Text, nullable=True)
+    category = Column(String(100), default="Functional behavior and navigation")
     priority = Column(String(20), default="High") # High, Medium, Low
     priority_score = Column(Float, default=0.0)
     preconditions = Column(Text, nullable=True)
-    steps = Column(JSON, default=list) # List of actions
+    steps = Column(JSON, default=list) # List of actions in execution order
+    test_data = Column(JSON, default=dict)
     expected_results = Column(JSON, default=list)
+    expectation_source = Column(String(100), default="deterministic_invariant") # user_requirement, business_rule, deterministic_invariant, known_good_reference, provisional_ai_hypothesis
+    baseline_id = Column(String(50), nullable=True)
     assertions = Column(JSON, default=list)
-    status = Column(String(50), default="Planned") # Planned, Running, Passed, Failed, Blocked
+    cleanup_requirements = Column(JSON, default=list)
+    status = Column(String(50), default="Planned") # Planned, Running, Passed, Failed, Blocked, Skipped, Inconclusive
     risk_reason = Column(Text, nullable=True)
     curiosity_breakdown = Column(JSON, default=dict) # impact, uncertainty, novelty, gap
     regression_eligible = Column(Boolean, default=False)
@@ -92,7 +99,7 @@ class TestExecution(Base):
     id = Column(String(50), primary_key=True, index=True)
     test_case_id = Column(String(50), ForeignKey("test_cases.id"), nullable=False, index=True)
     run_id = Column(String(50), ForeignKey("test_runs.id"), nullable=False, index=True)
-    status = Column(String(50), default="Running") # Passed, Failed, Blocked, Inconclusive
+    status = Column(String(50), default="Running") # Passed, Failed, Blocked, Inconclusive, Skipped
     actual_observations = Column(Text, nullable=True)
     start_time = Column(DateTime, default=get_utc_now)
     end_time = Column(DateTime, nullable=True)
@@ -101,6 +108,7 @@ class TestExecution(Base):
     assertion_results = Column(JSON, default=list)
     screenshot_ids = Column(JSON, default=list)
     console_logs = Column(JSON, default=list)
+    network_observations = Column(JSON, default=list)
 
     test_case = relationship("TestCase", back_populates="executions")
     finding = relationship("BugFinding", back_populates="execution", uselist=False)
@@ -115,16 +123,29 @@ class BugFinding(Base):
     title = Column(String(300), nullable=False)
     description = Column(Text, nullable=False)
     affected_url = Column(String(500), nullable=False)
+    category = Column(String(100), default="Functional behavior and navigation")
     severity = Column(String(20), default="Medium") # Critical, High, Medium, Low
     severity_reason = Column(Text, nullable=True)
-    status = Column(String(50), default="Verified") # Verified, Likely, Inconclusive, Not reproduced
+    status = Column(String(50), default="Confirmed") # Confirmed, Suspected, Inconclusive, Dismissed, Verified, Likely
     confidence_score = Column(Float, default=0.95)
+    trust_score = Column(Float, default=0.90)
+    trust_breakdown = Column(JSON, default=dict)
     verification_notes = Column(Text, nullable=True)
     expected_behavior = Column(Text, nullable=False)
+    expectation_source = Column(String(100), default="Deterministic Invariant")
+    expectation_justification = Column(Text, nullable=True)
     actual_behavior = Column(Text, nullable=False)
     reproduction_steps = Column(JSON, default=list)
+    reproduction_attempts = Column(Integer, default=1)
+    reproduction_outcomes = Column(JSON, default=list)
+    detection_method = Column(String(100), default="deterministic_assertion")
+    likely_cause_hypothesis = Column(Text, nullable=True)
+    suggested_fix = Column(Text, nullable=True)
+    alternative_explanations = Column(Text, nullable=True)
     screenshot_url = Column(String(500), nullable=True)
     console_errors = Column(JSON, default=list)
+    network_status = Column(JSON, default=dict)
+    regression_test_id = Column(String(50), nullable=True)
     replay_attempts = Column(Integer, default=1)
     created_at = Column(DateTime, default=get_utc_now)
 
@@ -154,6 +175,8 @@ class RegressionTest(Base):
     target_url = Column(String(500), nullable=False)
     original_run_id = Column(String(50), nullable=True)
     original_test_id = Column(String(50), nullable=True)
+    provenance = Column(String(50), default="passing_journey") # passing_journey, verified_bug_reproduction, user_authored
+    is_approved = Column(Boolean, default=True)
     structured_steps = Column(JSON, default=list)
     expected_outcomes = Column(JSON, default=list)
     assertions = Column(JSON, default=list)
@@ -177,6 +200,21 @@ class RegressionExecution(Base):
     diff_summary = Column(Text, nullable=True)
 
     regression_test = relationship("RegressionTest", back_populates="executions")
+
+class BehavioralBaseline(Base):
+    __tablename__ = "behavioral_baselines"
+
+    id = Column(String(50), primary_key=True, index=True)
+    name = Column(String(200), nullable=False)
+    target_domain = Column(String(200), nullable=False)
+    category = Column(String(100), default="Business-rule Invariant")
+    source_type = Column(String(100), default="deterministic_invariant") # user_requirement, business_rule, deterministic_invariant, known_good_reference, provisional_ai_hypothesis
+    version = Column(String(20), default="v1.0")
+    rule_definition = Column(JSON, default=dict)
+    expected_state = Column(JSON, default=dict)
+    is_approved = Column(Boolean, default=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=get_utc_now)
 
 class RunEvent(Base):
     __tablename__ = "run_events"

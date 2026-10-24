@@ -74,13 +74,33 @@ db_users: Dict[str, Dict[str, Any]] = {k: dict(v) for k, v in INITIAL_USERS.item
 db_carts: Dict[str, List[Dict[str, Any]]] = {}
 db_orders: List[Dict[str, Any]] = []
 
+INITIAL_ASSESSMENT_SUBMISSIONS = [
+    {
+        "submission_id": "SUB-INIT-01",
+        "candidate_name": "Taylor Dev",
+        "candidate_email": "taylor.dev@example.com",
+        "score_percent": "100%",
+        "submitted_at": "2026-03-01 14:30"
+    }
+]
+db_assessment_submissions: List[Dict[str, Any]] = list(INITIAL_ASSESSMENT_SUBMISSIONS)
+db_candidate_sessions: Dict[str, Dict[str, Any]] = {}
+
 # Controlled Seeded Defects Mode (True = Planted Defect Active; False = Clean/Fixed Build)
 SEEDED_DEFECTS_STATE: Dict[str, bool] = {
+    # DevStore E-Commerce Seeded Defects
     "BUG-01": True,  # Faulty Email Format Validation (/register)
     "BUG-02": True,  # Cart Subtotal Calculation Failure on Quantity Update (/cart)
     "BUG-03": True,  # Missing Validation on Required Postal/ZIP Code (/checkout)
     "BUG-04": True,  # Non-Idempotent Duplicate Order Submission (/checkout)
     "BUG-05": True,  # Broken Access Control on Protected Account Route (/account)
+
+    # iMocha-Style Hiring & Assessment Benchmark Seeded Defects
+    "ASSESS-01": True,  # State Recovery Failure: Answer State Lost on Page Refresh (/assessment/test)
+    "ASSESS-02": True,  # Non-Idempotent Duplicate Assessment Submission on Rapid Click (/assessment/submit)
+    "ASSESS-03": True,  # Score Calculation Arithmetic Bug: Reports 33% instead of 100% (/assessment/submit)
+    "ASSESS-04": True,  # Broken Access Control on Recruiter Results Dashboard (/assessment/recruiter/results)
+    "ASSESS-05": True,  # Missing Format Validation on Candidate Access Code (/assessment/start)
 }
 
 def get_session_id(request: Request) -> str:
@@ -456,9 +476,185 @@ async def customer_account(request: Request):
             return RedirectResponse(url="/login?redirect=/account", status_code=303)
 
     response = render_template(request, "account.html", {
+        "cart_count": get_cart_count(session_id),
         "user": user,
-        "orders": db_orders,
-        "cart_count": get_cart_count(session_id)
+        "orders": [
+            {"id": "ORD-1092", "date": "2026-03-12", "total": "$219.98", "status": "Delivered"},
+            {"id": "ORD-1088", "date": "2026-03-01", "total": "$49.99", "status": "Delivered"}
+        ]
+    })
+    response.set_cookie(key="devstore_session", value=session_id)
+    return response
+
+# ----------------- Assessment Platform Benchmark Endpoints -----------------
+
+@app.get("/assessment", response_class=HTMLResponse)
+async def assessment_home(request: Request):
+    """Candidate assignment landing portal."""
+    session_id = get_session_id(request)
+    user = get_current_user(request)
+    response = render_template(request, "assessment_home.html", {
+        "cart_count": get_cart_count(session_id),
+        "user": user,
+        "candidate_name": "Jordan Reed",
+        "candidate_email": "jordan.reed@example.com"
+    })
+    response.set_cookie(key="devstore_session", value=session_id)
+    return response
+
+@app.post("/assessment/start", response_class=HTMLResponse)
+async def assessment_start(
+    request: Request,
+    candidate_name: str = Form(...),
+    candidate_email: str = Form(...),
+    access_code: str = Form(...)
+):
+    """
+    Candidate access code validation.
+    SEEDED DEFECT ASSESS-05: Missing validation accepts 1-character malformed code.
+    """
+    session_id = get_session_id(request)
+    code_clean = access_code.strip()
+
+    # If ASSESS-05 is enabled: defective length-only validation accepts malformed 1-char codes
+    if SEEDED_DEFECTS_STATE.get("ASSESS-05", True):
+        is_valid = len(code_clean) >= 1
+    else:
+        # Proper validation requires formatted 6-char invitation code
+        is_valid = len(code_clean) >= 6 and "-" in code_clean
+
+    if not is_valid:
+        return render_template(request, "assessment_home.html", {
+            "error": "Invalid assessment access code. Format requires 6-character invitation key (e.g. AIM-2026).",
+            "candidate_name": candidate_name,
+            "candidate_email": candidate_email
+        })
+
+    # Initialize candidate session
+    db_candidate_sessions[session_id] = {
+        "name": candidate_name,
+        "email": candidate_email,
+        "code": code_clean,
+        "answers": {"q1": "B", "q2": "A", "q3": "A"} # seeded defaults
+    }
+
+    response = RedirectResponse(url="/assessment/test", status_code=303)
+    response.set_cookie(key="devstore_session", value=session_id)
+    return response
+
+@app.get("/assessment/test", response_class=HTMLResponse)
+async def assessment_test(request: Request):
+    """
+    Candidate examination view.
+    SEEDED DEFECT ASSESS-01: Page reload wipes answered radio selections from state.
+    """
+    session_id = get_session_id(request)
+    candidate = db_candidate_sessions.get(session_id, {
+        "name": "Jordan Reed",
+        "email": "jordan.reed@example.com",
+        "answers": {"q1": "B", "q2": "A", "q3": "A"}
+    })
+
+    # If refresh simulated:
+    is_refresh = request.query_params.get("refresh") == "1"
+    if is_refresh and SEEDED_DEFECTS_STATE.get("ASSESS-01", True):
+        # Defective behavior: Session answer state lost on refresh
+        candidate["answers"] = {}
+        db_candidate_sessions[session_id] = candidate
+
+    response = render_template(request, "assessment_exam.html", {
+        "candidate": candidate,
+        "answers": candidate.get("answers", {}),
+        "cart_count": get_cart_count(session_id),
+        "user": get_current_user(request)
+    })
+    response.set_cookie(key="devstore_session", value=session_id)
+    return response
+
+@app.post("/assessment/submit", response_class=HTMLResponse)
+async def assessment_submit(
+    request: Request,
+    candidate_name: str = Form(...),
+    candidate_email: str = Form(...),
+    q1: Optional[str] = Form(None),
+    q2: Optional[str] = Form(None),
+    q3: Optional[str] = Form(None)
+):
+    """
+    Assessment submission and scoring.
+    SEEDED DEFECT ASSESS-02: Non-idempotent submission creates duplicate results on double submit.
+    SEEDED DEFECT ASSESS-03: Score calculation arithmetic bug displays 33% instead of 100%.
+    """
+    session_id = get_session_id(request)
+    
+    # 1. Answer Key Evaluation (Answer Key: q1=B, q2=A, q3=A)
+    submitted = {"q1": q1, "q2": q2, "q3": q3}
+    key = {"q1": "B", "q2": "A", "q3": "A"}
+    correct = sum(1 for q, ans in submitted.items() if ans == key.get(q))
+    total = len(key)
+
+    # 2. Score Calculation Defect (ASSESS-03)
+    if SEEDED_DEFECTS_STATE.get("ASSESS-03", True):
+        # Defective logic: reports 33% when all 3 answers are correct
+        score_percent = "33%" if correct == 3 else f"{int(correct / total * 100)}%"
+    else:
+        score_percent = f"{int(correct / total * 100)}%"
+
+    # 3. Idempotency Defect (ASSESS-02)
+    # Check if duplicate submission already recorded
+    recent_dup = [s for s in db_assessment_submissions if s["candidate_email"] == candidate_email]
+    if not SEEDED_DEFECTS_STATE.get("ASSESS-02", True):
+        # Fixed behavior: idempotent submission does not duplicate
+        if recent_dup:
+            submission_id = recent_dup[-1]["submission_id"]
+            return render_template(request, "assessment_result.html", {
+                "submission_id": submission_id,
+                "candidate_name": candidate_name,
+                "candidate_email": candidate_email,
+                "score_percent": recent_dup[-1]["score_percent"],
+                "correct_count": correct,
+                "total_questions": total
+            })
+
+    submission_id = f"SUB-{uuid.uuid4().hex[:6].upper()}"
+    new_sub = {
+        "submission_id": submission_id,
+        "candidate_name": candidate_name,
+        "candidate_email": candidate_email,
+        "score_percent": score_percent,
+        "submitted_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    }
+    db_assessment_submissions.append(new_sub)
+
+    response = render_template(request, "assessment_result.html", {
+        "submission_id": submission_id,
+        "candidate_name": candidate_name,
+        "candidate_email": candidate_email,
+        "score_percent": score_percent,
+        "correct_count": correct,
+        "total_questions": total
+    })
+    response.set_cookie(key="devstore_session", value=session_id)
+    return response
+
+@app.get("/assessment/recruiter/results", response_class=HTMLResponse)
+async def recruiter_results(request: Request):
+    """
+    Recruiter candidate evaluation view.
+    SEEDED DEFECT ASSESS-04: Broken Access Control leaks candidate results to anonymous visitors.
+    """
+    session_id = get_session_id(request)
+    user = get_current_user(request)
+
+    # If defect ASSESS-04 is fixed: enforce recruiter login
+    if not SEEDED_DEFECTS_STATE.get("ASSESS-04", True):
+        if not user or user.get("email") != "recruiter@apexqa.io":
+            return RedirectResponse(url="/login?redirect=/assessment/recruiter/results", status_code=303)
+
+    response = render_template(request, "assessment_recruiter.html", {
+        "submissions": db_assessment_submissions,
+        "cart_count": get_cart_count(session_id),
+        "user": user
     })
     response.set_cookie(key="devstore_session", value=session_id)
     return response
@@ -511,11 +707,13 @@ async def toggle_defects(request: Request):
 @app.post("/api/reset")
 async def reset_demo_state():
     """Resets the demo state back to default synthetic data."""
-    global db_products, db_users, db_carts, db_orders
+    global db_products, db_users, db_carts, db_orders, db_assessment_submissions, db_candidate_sessions
     db_products = [dict(p) for p in INITIAL_PRODUCTS]
     db_users = {k: dict(v) for k, v in INITIAL_USERS.items()}
     db_carts = {}
     db_orders = []
+    db_assessment_submissions = list(INITIAL_ASSESSMENT_SUBMISSIONS)
+    db_candidate_sessions = {}
     for k in SEEDED_DEFECTS_STATE:
         SEEDED_DEFECTS_STATE[k] = True
     return {"status": "success", "message": "Demo state reset to synthetic defaults."}

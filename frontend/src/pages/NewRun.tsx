@@ -9,7 +9,10 @@ import {
   AlertCircle,
   Cpu,
   Layers,
-  Sparkles
+  Sparkles,
+  Scale,
+  Compass,
+  CheckCircle2
 } from 'lucide-react';
 import { createRun } from '../api/client';
 
@@ -20,16 +23,27 @@ interface DemoTargetPreset {
   url: string;
   description: string;
   objectives: string[];
+  baseline_profile?: string;
 }
 
 const DEMO_PRESETS: DemoTargetPreset[] = [
+  {
+    id: 'assessment',
+    name: 'iMocha Assessment Platform',
+    badge: '5 Assessment Defects',
+    url: 'http://127.0.0.1:5001/assessment',
+    description: 'Hiring assessment platform. Candidates register and take timed technical evaluations. Seeded defects: question 3 answer reset on reload (ASSESS-01), double submission race condition creating duplicate submissions (ASSESS-02), score calculation arithmetic error (ASSESS-03), candidate unauthorized score viewing before recruiter publish (ASSESS-04), and unvalidated email boundary acceptance (ASSESS-05).',
+    objectives: ['Functional testing', 'Form validation', 'Business-rule testing', 'Negative testing'],
+    baseline_profile: 'assessment'
+  },
   {
     id: 'devstore',
     name: 'Controlled DevStore',
     badge: '5 Seeded Defects',
     url: 'http://127.0.0.1:5001',
-    description: 'Users should be able to register accounts, log in with valid credentials, browse product catalog items, add hardware products to their cart, increment quantities with accurate mathematical total calculations, fill checkout shipping details, and access protected customer account dashboards. Cart arithmetic and form validations must be strictly enforced.',
-    objectives: ['Functional testing', 'Form validation', 'Business-rule testing', 'Negative testing']
+    description: 'E-commerce platform. Seeded defects: faulty email validation, incorrect cart subtotal arithmetic after quantity changes, missing postal-code validation, duplicate order creation on double submission, and broken access control on protected account pages.',
+    objectives: ['Functional testing', 'Form validation', 'Business-rule testing', 'Negative testing'],
+    baseline_profile: 'ecommerce'
   },
   {
     id: 'saucedemo',
@@ -37,7 +51,8 @@ const DEMO_PRESETS: DemoTargetPreset[] = [
     badge: 'Industry Benchmark',
     url: 'https://www.saucedemo.com',
     description: 'Standard e-commerce QA benchmark. Users should be able to view login form, authenticate with standard credentials (standard_user / secret_sauce), browse catalog products, sort inventory, add items to cart, view cart subtotal, fill checkout credentials, and complete purchase workflows without UI exceptions.',
-    objectives: ['Functional testing', 'Form validation', 'Navigation testing']
+    objectives: ['Functional testing', 'Form validation', 'Navigation testing'],
+    baseline_profile: 'none'
   },
   {
     id: 'the-internet',
@@ -45,24 +60,19 @@ const DEMO_PRESETS: DemoTargetPreset[] = [
     badge: 'Heroku Sandbox',
     url: 'https://the-internet.herokuapp.com',
     description: 'Autonomous exploration of UI testing sandbox. Verify navigation links, dynamic controls, authentication prompts, checkboxes, dropdown menus, and ensure error codes and status transitions resolve gracefully.',
-    objectives: ['Functional testing', 'Navigation testing', 'Negative testing']
-  },
-  {
-    id: 'example',
-    name: 'Example Domain',
-    badge: 'Clean Web',
-    url: 'https://example.com',
-    description: 'Verify standard web document accessibility, primary heading tags, informative documentation links, and responsive layout hydration without script errors.',
-    objectives: ['Functional testing', 'Navigation testing']
+    objectives: ['Functional testing', 'Navigation testing', 'Negative testing'],
+    baseline_profile: 'none'
   }
 ];
 
 export const NewRun: React.FC = () => {
   const navigate = useNavigate();
 
-  const [targetUrl, setTargetUrl] = useState('http://127.0.0.1:5001');
-  const [activePreset, setActivePreset] = useState<string>('devstore');
+  const [targetUrl, setTargetUrl] = useState('http://127.0.0.1:5001/assessment');
+  const [activePreset, setActivePreset] = useState<string>('assessment');
   const [description, setDescription] = useState(DEMO_PRESETS[0].description);
+  const [testMode, setTestMode] = useState<'universal_exploratory' | 'deep_verification'>('deep_verification');
+  const [baselineProfile, setBaselineProfile] = useState<string>('assessment');
 
   const availableObjectives = [
     'Functional testing',
@@ -122,7 +132,9 @@ export const NewRun: React.FC = () => {
           max_duration_sec: maxDurationSec,
           max_retries: maxRetries
         },
-        mode
+        mode,
+        test_mode: testMode,
+        baseline_profile: baselineProfile
       });
 
       // Navigate to exploration page for this run
@@ -139,15 +151,18 @@ export const NewRun: React.FC = () => {
     setTargetUrl(preset.url);
     setDescription(preset.description);
     setSelectedObjectives(preset.objectives);
+    if (preset.baseline_profile) {
+      setBaselineProfile(preset.baseline_profile);
+    }
   };
 
   const handleResetDemoApp = async () => {
     try {
       const res = await fetch('http://127.0.0.1:5001/api/reset', { method: 'POST' });
       if (res.ok) {
-        alert('Sample DevStore application state reset successfully.');
+        alert('Sample applications reset successfully.');
       } else {
-        alert('Sample DevStore is not reachable at 127.0.0.1:5001. Please ensure the sample app is running.');
+        alert('Sample server is not reachable at 127.0.0.1:5001. Please ensure the sample app is running.');
       }
     } catch (e) {
       alert('Could not connect to sample app at http://127.0.0.1:5001.');
@@ -267,15 +282,100 @@ export const NewRun: React.FC = () => {
           </div>
         </div>
 
-        {/* Objectives & Mode */}
-        <div className="bg-white p-6 rounded-xl border border-[#e2e8f0] shadow-sm space-y-4">
-          <h3 className="font-semibold text-sm text-[#0f172a] flex items-center gap-2 pb-3 border-b border-[#e2e8f0]">
-            <Layers className="w-4 h-4 text-[#047857]" />
-            Testing Objectives & Agent Mode
+        {/* Universal Exploratory vs Deep Verification Mode */}
+        <div className="bg-white p-6 rounded-xl border border-[hsl(var(--border))] shadow-xs space-y-4">
+          <h3 className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center gap-2 pb-3 border-b border-[hsl(var(--border))]">
+            <Compass className="w-4 h-4 text-[hsl(var(--accent))]" />
+            Exploration & Verification Mode (IM-02 Specification)
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <label
+              className={`p-4 border rounded-xl cursor-pointer flex items-start gap-3 transition ${
+                testMode === 'deep_verification'
+                  ? 'bg-indigo-50/70 border-indigo-300 ring-1 ring-indigo-300'
+                  : 'bg-white border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))]/40'
+              }`}
+            >
+              <input
+                type="radio"
+                name="test_mode"
+                value="deep_verification"
+                checked={testMode === 'deep_verification'}
+                onChange={() => setTestMode('deep_verification')}
+                className="mt-1 text-[hsl(var(--accent))]"
+              />
+              <div>
+                <div className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-indigo-600" />
+                  Mode B: Deep Verification Mode
+                </div>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1 leading-relaxed">
+                  Evaluates business logic, state recovery across page reloads, double-click transaction idempotency, and access controls against explicit behavioral baselines.
+                </p>
+              </div>
+            </label>
+
+            <label
+              className={`p-4 border rounded-xl cursor-pointer flex items-start gap-3 transition ${
+                testMode === 'universal_exploratory'
+                  ? 'bg-indigo-50/70 border-indigo-300 ring-1 ring-indigo-300'
+                  : 'bg-white border-[hsl(var(--border))] hover:bg-[hsl(var(--secondary))]/40'
+              }`}
+            >
+              <input
+                type="radio"
+                name="test_mode"
+                value="universal_exploratory"
+                checked={testMode === 'universal_exploratory'}
+                onChange={() => setTestMode('universal_exploratory')}
+                className="mt-1 text-[hsl(var(--accent))]"
+              />
+              <div>
+                <div className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center gap-1.5">
+                  <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                  Mode A: Universal Exploratory Mode
+                </div>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1 leading-relaxed">
+                  Scout autonomously crawls same-origin links, discovers forms, inputs, and interactive widgets without bespoke code. Generates and executes general UI test journeys.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Baseline Profile Selection */}
+          <div className="pt-2 border-t border-[hsl(var(--border))]">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider flex items-center gap-1">
+                <Scale className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
+                Behavioral Baseline Profile
+              </label>
+              <span className="text-[11px] text-[hsl(var(--muted-foreground))]">
+                Asserts against documented ground truth
+              </span>
+            </div>
+            <select
+              value={baselineProfile}
+              onChange={e => setBaselineProfile(e.target.value)}
+              className="w-full px-3.5 py-2 text-xs border border-[hsl(var(--border))] rounded-lg bg-[hsl(var(--secondary))]/30 focus:outline-none focus:ring-1 focus:ring-[hsl(var(--ring))]"
+            >
+              <option value="assessment">iMocha Assessment Platform (Session Recovery, Invariant Scoring, Idempotency)</option>
+              <option value="ecommerce">E-Commerce DevStore (Cart Math, Address Rules, Order Idempotency, Access Control)</option>
+              <option value="universal">Universal Web Invariants (Navigation Transitions, Console Integrity, Form Acceptance)</option>
+              <option value="none">Provisional / Exploratory Only (No Seeded Baseline)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Objectives & Engine */}
+        <div className="bg-white p-6 rounded-xl border border-[hsl(var(--border))] shadow-xs space-y-4">
+          <h3 className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center gap-2 pb-3 border-b border-[hsl(var(--border))]">
+            <Layers className="w-4 h-4 text-[hsl(var(--accent))]" />
+            Testing Objectives & Agent Provider
           </h3>
 
           <div>
-            <div className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">
+            <div className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
               Select Testing Objectives
             </div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
@@ -288,11 +388,11 @@ export const NewRun: React.FC = () => {
                     onClick={() => toggleObjective(obj)}
                     className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-medium text-left transition ${
                       checked
-                        ? 'bg-[#ecfdf5] border-[#047857] text-[#065f46]'
-                        : 'bg-white border-[#e2e8f0] text-[#64748b] hover:border-[#cbd5e1]'
+                        ? 'bg-[hsl(var(--secondary))] border-[hsl(var(--primary))] text-[hsl(var(--primary))] font-semibold'
+                        : 'bg-white border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] hover:border-slate-300'
                     }`}
                   >
-                    <CheckSquare className={`w-3.5 h-3.5 ${checked ? 'text-[#047857]' : 'text-[#cbd5e1]'}`} />
+                    <CheckSquare className={`w-3.5 h-3.5 ${checked ? 'text-[hsl(var(--accent))]' : 'text-slate-300'}`} />
                     <span>{obj}</span>
                   </button>
                 );
@@ -301,15 +401,15 @@ export const NewRun: React.FC = () => {
           </div>
 
           <div className="pt-2">
-            <div className="text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">
-              Execution Mode
+            <div className="text-xs font-semibold text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-2">
+              Agent Synthesis Engine
             </div>
             <div className="grid grid-cols-2 gap-3">
               <label
                 className={`p-3.5 border rounded-lg cursor-pointer flex items-start gap-3 transition ${
                   mode === 'demo'
-                    ? 'bg-[#ecfdf5] border-[#047857]'
-                    : 'bg-white border-[#e2e8f0] hover:border-[#cbd5e1]'
+                    ? 'bg-[hsl(var(--secondary))] border-[hsl(var(--border))] ring-1 ring-[hsl(var(--border))]'
+                    : 'bg-white border-[hsl(var(--border))] hover:border-slate-300'
                 }`}
               >
                 <input
@@ -321,12 +421,12 @@ export const NewRun: React.FC = () => {
                   className="mt-1"
                 />
                 <div>
-                  <div className="font-semibold text-sm text-[#0f172a] flex items-center gap-1.5">
-                    <Cpu className="w-3.5 h-3.5 text-[#047857]" />
-                    Deterministic Demo Mode
+                  <div className="font-semibold text-xs text-[hsl(var(--foreground))] flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-slate-700" />
+                    Deterministic Engine Mode
                   </div>
-                  <p className="text-xs text-[#64748b] mt-0.5">
-                    Real Playwright browser automation with deterministic scenarios calibrated for the controlled sample app. Works without external API keys.
+                  <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">
+                    Real Playwright browser automation with deterministic scenarios calibrated for reproducible test journeys.
                   </p>
                 </div>
               </label>
@@ -334,8 +434,8 @@ export const NewRun: React.FC = () => {
               <label
                 className={`p-3.5 border rounded-lg cursor-pointer flex items-start gap-3 transition ${
                   mode === 'ai'
-                    ? 'bg-[#ecfdf5] border-[#047857]'
-                    : 'bg-white border-[#e2e8f0] hover:border-[#cbd5e1]'
+                    ? 'bg-purple-50/50 border-purple-200 ring-1 ring-purple-200'
+                    : 'bg-white border-[hsl(var(--border))] hover:border-slate-300'
                 }`}
               >
                 <input
@@ -347,11 +447,11 @@ export const NewRun: React.FC = () => {
                   className="mt-1"
                 />
                 <div>
-                  <div className="font-semibold text-sm text-[#0f172a] flex items-center gap-1.5">
+                  <div className="font-semibold text-xs text-[hsl(var(--foreground))] flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                    Real AI Mode (LLM Powered)
+                    Autonomous AI Mode (LLM-Powered)
                   </div>
-                  <p className="text-xs text-[#64748b] mt-0.5">
+                  <p className="text-[11px] text-[hsl(var(--muted-foreground))] mt-0.5">
                     Uses configured LLM provider to reason about DOM state and synthesize structured test candidates with Pydantic validation.
                   </p>
                 </div>
@@ -361,15 +461,15 @@ export const NewRun: React.FC = () => {
         </div>
 
         {/* Safety Boundaries */}
-        <div className="bg-white p-6 rounded-xl border border-[#e2e8f0] shadow-sm space-y-4">
-          <h3 className="font-semibold text-sm text-[#0f172a] flex items-center gap-2 pb-3 border-b border-[#e2e8f0]">
-            <Sliders className="w-4 h-4 text-[#047857]" />
-            Autonomous Execution Boundaries
+        <div className="bg-white p-6 rounded-xl border border-[hsl(var(--border))] shadow-xs space-y-4">
+          <h3 className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center gap-2 pb-3 border-b border-[hsl(var(--border))]">
+            <Sliders className="w-4 h-4 text-[hsl(var(--accent))]" />
+            Autonomous Execution Boundaries & Safety Guards
           </h3>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
-              <label htmlFor="max-pages-input" className="block text-xs font-semibold text-[#64748b] mb-1">Max Pages to Explore</label>
+              <label htmlFor="max-pages-input" className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1">Max Pages to Explore</label>
               <input
                 id="max-pages-input"
                 type="number"
@@ -377,11 +477,11 @@ export const NewRun: React.FC = () => {
                 max={25}
                 value={maxPages}
                 onChange={e => setMaxPages(parseInt(e.target.value) || 10)}
-                className="w-full px-3 py-1.5 border border-[#cbd5e1] rounded-lg text-sm"
+                className="w-full px-3 py-1.5 border border-[hsl(var(--border))] rounded-lg text-xs"
               />
             </div>
             <div>
-              <label htmlFor="max-actions-input" className="block text-xs font-semibold text-[#64748b] mb-1">Max Actions / Run</label>
+              <label htmlFor="max-actions-input" className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1">Max Actions / Run</label>
               <input
                 id="max-actions-input"
                 type="number"
@@ -389,11 +489,11 @@ export const NewRun: React.FC = () => {
                 max={100}
                 value={maxActions}
                 onChange={e => setMaxActions(parseInt(e.target.value) || 30)}
-                className="w-full px-3 py-1.5 border border-[#cbd5e1] rounded-lg text-sm"
+                className="w-full px-3 py-1.5 border border-[hsl(var(--border))] rounded-lg text-xs"
               />
             </div>
             <div>
-              <label htmlFor="max-duration-input" className="block text-xs font-semibold text-[#64748b] mb-1">Max Timeout (sec)</label>
+              <label htmlFor="max-duration-input" className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1">Max Timeout (sec)</label>
               <input
                 id="max-duration-input"
                 type="number"
@@ -401,11 +501,11 @@ export const NewRun: React.FC = () => {
                 max={600}
                 value={maxDurationSec}
                 onChange={e => setMaxDurationSec(parseInt(e.target.value) || 300)}
-                className="w-full px-3 py-1.5 border border-[#cbd5e1] rounded-lg text-sm"
+                className="w-full px-3 py-1.5 border border-[hsl(var(--border))] rounded-lg text-xs"
               />
             </div>
             <div>
-              <label htmlFor="max-retries-input" className="block text-xs font-semibold text-[#64748b] mb-1">Verification Replays</label>
+              <label htmlFor="max-retries-input" className="block text-xs font-semibold text-[hsl(var(--muted-foreground))] mb-1">Clean Context Replays</label>
               <input
                 id="max-retries-input"
                 type="number"
@@ -413,7 +513,7 @@ export const NewRun: React.FC = () => {
                 max={3}
                 value={maxRetries}
                 onChange={e => setMaxRetries(parseInt(e.target.value) || 2)}
-                className="w-full px-3 py-1.5 border border-[#cbd5e1] rounded-lg text-sm"
+                className="w-full px-3 py-1.5 border border-[hsl(var(--border))] rounded-lg text-xs"
               />
             </div>
           </div>
@@ -424,19 +524,19 @@ export const NewRun: React.FC = () => {
           <button
             type="button"
             onClick={() => {
-              setTargetUrl('http://127.0.0.1:5001');
+              setTargetUrl('http://127.0.0.1:5001/assessment');
               setSelectedObjectives(['Functional testing', 'Form validation', 'Business-rule testing']);
             }}
-            className="px-4 py-2 border border-[#cbd5e1] text-[#475569] font-medium text-sm rounded-lg hover:bg-slate-50 transition"
+            className="px-4 py-2 border border-[hsl(var(--border))] text-[hsl(var(--muted-foreground))] font-medium text-xs rounded-lg hover:bg-[hsl(var(--secondary))] transition"
           >
             Reset to Defaults
           </button>
           <button
             type="submit"
             disabled={submitting}
-            className="bg-[#065f46] hover:bg-[#047857] text-white font-semibold text-sm px-6 py-2 rounded-lg transition shadow-sm flex items-center gap-2 disabled:opacity-50"
+            className="bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/90 text-white font-medium text-xs px-5 py-2.5 rounded-lg transition shadow-xs flex items-center gap-2 disabled:opacity-50"
           >
-            <PlayCircle className="w-4 h-4" />
+            <PlayCircle className="w-4 h-4 text-[hsl(var(--accent))]" />
             <span>{submitting ? 'Initializing Session...' : 'Start Autonomous Test Run'}</span>
           </button>
         </div>

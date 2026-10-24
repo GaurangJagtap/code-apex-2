@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Assessment Results — Final Score Report{% endblock %}
+
+{% block content %}
+<div style="max-width: 650px; margin: 3rem auto; background: white; padding: 2.5rem; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); text-align: center;">
+  <div style="width: 56px; height: 56px; border-radius: 50%; background: #ecfdf5; color: #047857; display: inline-flex; align-items: center; justify-content: center; font-size: 1.75rem; margin-bottom: 1rem;">
+    ✓
+  </div>
+
+  <h1 style="font-size: 1.5rem; font-weight: 700; color: #111827; margin-bottom: 0.5rem;" id="assessment-result-title">
+    Assessment Completed Successfully
+  </h1>
+  <p style="color: #6b7280; font-size: 0.9rem; margin-bottom: 2rem;">
+    Submission confirmation and automated benchmark score report
+  </p>
+
+  <!-- Score Summary Card -->
+  <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 1.5rem; margin-bottom: 2rem;">
+    <div style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.25rem;">Final Evaluated Score</div>
+    <div style="font-size: 3rem; font-weight: 800; color: #0f172a;" id="score-percentage">
+      {{ score_percent }}
+    </div>
+    <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.25rem;">
+      <span id="correct-count">{{ correct_count }}</span> of <span id="total-questions">{{ total_questions }}</span> Questions Answered Correctly
+    </div>
+  </div>
+
+  <!-- Invariant Proof Details -->
+  <div style="text-align: left; background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.25rem; font-size: 0.85rem; margin-bottom: 2rem;">
+    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+      <span style="color: #6b7280;">Submission ID:</span>
+      <span style="font-family: monospace; font-weight: 600;" id="submission-id">{{ submission_id }}</span>
+    </div>
+    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+      <span style="color: #6b7280;">Candidate Name:</span>
+      <span style="font-weight: 600;" id="result-candidate-name">{{ candidate_name }}</span>
+    </div>
+    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+      <span style="color: #6b7280;">Candidate Email:</span>
+      <span style="font-weight: 600;" id="result-candidate-email">{{ candidate_email }}</span>
+    </div>
+    <div style="display: flex; justify-content: space-between;">
+      <span style="color: #6b7280;">Persistence Invariant:</span>
+      <span style="color: #047857; font-weight: 600;" id="submission-status">Completed & Persisted</span>
+    </div>
+  </div>
+
+  <div style="display: flex; justify-content: center; gap: 1rem;">
+    <a href="/assessment" id="btn-return-assessment" style="padding: 0.65rem 1.25rem; background: #f3f4f6; color: #374151; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 0.9rem;">
+      &larr; Return to Portal
+    </a>
+    <a href="/assessment/recruiter/results" id="btn-view-recruiter" style="padding: 0.65rem 1.25rem; background: #1f2937; color: white; border-radius: 6px; text-decoration: none; font-weight: 600; font-size: 0.9rem;">
+      Recruiter Dashboard &rarr;
+    </a>
+  </div>
+</div>
+{% endblock %}

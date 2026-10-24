@@ -39,6 +39,12 @@ class BrowserExecutor:
             if await loc_placeholder.count() > 0:
                 return loc_placeholder
 
+        # 3. Try visible button/input text fallback
+        if "submit" in selector.lower() or "submit" in action_desc.lower():
+            loc_sub = page.locator('button[type="submit"], input[type="submit"]').first
+            if await loc_sub.count() > 0:
+                return loc_sub
+
         return None
 
     async def execute_test(self, test_case: Dict[str, Any]) -> Dict[str, Any]:
@@ -55,7 +61,7 @@ class BrowserExecutor:
         execution_error: Optional[str] = None
         failing_step_index: Optional[int] = None
 
-        # 1. Execute Steps
+        # 1. Execute Steps in exact ordered sequence
         for idx, step in enumerate(steps):
             action = step.get("action", "").lower()
             selector = step.get("selector")
@@ -65,7 +71,7 @@ class BrowserExecutor:
             try:
                 if action == "goto":
                     target_url = value or selector
-                    await page.goto(target_url, wait_until="domcontentloaded", timeout=10000)
+                    await page.goto(target_url, wait_until="domcontentloaded", timeout=12000)
                     step_logs.append(f"Navigated to {target_url}")
 
                 elif action == "click":
@@ -73,6 +79,21 @@ class BrowserExecutor:
                     if loc and await loc.count() > 0:
                         await loc.click(timeout=5000)
                         step_logs.append(f"Clicked element '{selector}'")
+                    else:
+                        raise Exception(f"Element '{selector}' not found on page {page.url}")
+
+                elif action in ("double_click", "rapid_click", "duplicate_submit"):
+                    loc = await self._resolve_locator_with_fallback(page, selector, desc)
+                    if loc and await loc.count() > 0:
+                        # Rapid double submission to test idempotency
+                        await loc.click(timeout=3000)
+                        await asyncio.sleep(0.05)
+                        try:
+                            if await loc.count() > 0 and await loc.is_enabled():
+                                await loc.click(timeout=2000)
+                                step_logs.append(f"Dispatched rapid secondary click on '{selector}' (Idempotency test)")
+                        except Exception:
+                            pass
                     else:
                         raise Exception(f"Element '{selector}' not found on page {page.url}")
 
@@ -91,6 +112,18 @@ class BrowserExecutor:
                         step_logs.append(f"Selected '{value}' in '{selector}'")
                     else:
                         raise Exception(f"Select element '{selector}' not found on page {page.url}")
+
+                elif action == "check":
+                    loc = await self._resolve_locator_with_fallback(page, selector, desc)
+                    if loc and await loc.count() > 0:
+                        await loc.check(timeout=5000)
+                        step_logs.append(f"Checked radio/checkbox '{selector}'")
+                    else:
+                        raise Exception(f"Checkbox/radio element '{selector}' not found on page {page.url}")
+
+                elif action in ("refresh", "reload"):
+                    await page.reload(wait_until="domcontentloaded", timeout=10000)
+                    step_logs.append(f"Reloaded page {page.url} to verify state recovery")
 
                 elif action == "wait":
                     wait_ms = int(value or 1000)

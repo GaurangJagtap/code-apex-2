@@ -12,18 +12,20 @@ class RunCreateRequest(BaseModel):
         "max_retries": 2
     })
     mode: str = Field(default="demo", description="'demo' or 'ai'")
+    test_mode: str = Field(default="universal_exploratory", description="'universal_exploratory' or 'deep_verification'")
+    baseline_profile: str = Field(default="default", description="Baseline expectations profile")
     username: Optional[str] = None
     password: Optional[str] = None
 
 class TestStepSchema(BaseModel):
     __test__ = False
-    action: str = Field(..., description="goto, click, fill, select, check, wait, assert, screenshot")
+    action: str = Field(..., description="goto, click, fill, select, check, wait, assert, screenshot, refresh")
     selector: Optional[str] = None
     value: Optional[str] = None
     description: str = Field(..., description="Human readable description of action")
 
 class AssertionSchema(BaseModel):
-    type: str = Field(..., description="element_visible, text_contains, value_matches, url_contains, not_visible")
+    type: str = Field(..., description="element_visible, text_contains, value_matches, url_contains, not_visible, cart_total_matches, element_disabled, element_enabled, state_persists_on_refresh")
     target: str = Field(..., description="CSS selector, element text, or URL property")
     expected: Optional[str] = None
     message: Optional[str] = None
@@ -40,11 +42,16 @@ class TestCaseCreate(BaseModel):
     __test__ = False
     test_id: str
     title: str
-    category: str = "Functional"
+    objective: Optional[str] = None
+    category: str = "Functional behavior and navigation"
     priority: str = "High"
     preconditions: Optional[str] = None
     steps: List[TestStepSchema]
+    test_data: Dict[str, Any] = Field(default_factory=dict)
     assertions: List[AssertionSchema]
+    expectation_source: str = "deterministic_invariant"
+    baseline_id: Optional[str] = None
+    cleanup_requirements: List[Dict[str, Any]] = Field(default_factory=list)
     risk_reason: str
     curiosity: Optional[CuriosityBreakdown] = None
     regression_candidate: bool = True
@@ -90,17 +97,30 @@ class BugFindingResponse(BaseModel):
     title: str
     description: str
     affected_url: str
+    category: str = "Functional behavior and navigation"
     severity: str
     severity_reason: Optional[str] = None
-    status: str # Verified, Likely, Inconclusive, Not reproduced (Confirmed, Suspected)
+    status: str # Confirmed, Suspected, Inconclusive, Dismissed, Verified, Likely, Not reproduced
     confidence_score: float
+    trust_score: float = 0.90
+    trust_breakdown: Dict[str, Any] = Field(default_factory=dict)
     verification_notes: Optional[str] = None
     expected_behavior: str
+    expectation_source: str = "Deterministic Invariant"
+    expectation_justification: Optional[str] = None
     actual_behavior: str
     reproduction_steps: List[str]
+    reproduction_attempts: int = 1
+    reproduction_outcomes: List[Dict[str, Any]] = Field(default_factory=list)
+    detection_method: str = "deterministic_assertion"
+    likely_cause_hypothesis: Optional[str] = None
+    suggested_fix: Optional[str] = None
+    alternative_explanations: Optional[str] = None
     screenshot_url: Optional[str] = None
     console_errors: List[str] = []
-    replay_attempts: int
+    network_status: Dict[str, Any] = Field(default_factory=dict)
+    regression_test_id: Optional[str] = None
+    replay_attempts: int = 1
     created_at: str
 
 class TestExecutionResponse(BaseModel):
@@ -108,21 +128,29 @@ class TestExecutionResponse(BaseModel):
     id: str
     test_case_id: str
     title: str
+    objective: Optional[str] = None
     category: str
     priority: str
     priority_score: float
-    status: str
+    status: str # Passed, Failed, Blocked, Skipped, Inconclusive
     duration_sec: float
     retry_count: int
     preconditions: Optional[str] = None
     steps: List[Dict[str, Any]] = []
+    test_data: Dict[str, Any] = Field(default_factory=dict)
     assertions: List[Dict[str, Any]] = []
+    expectation_source: str = "deterministic_invariant"
+    baseline_id: Optional[str] = None
     actual_observations: Optional[str] = None
     assertion_results: List[Dict[str, Any]] = []
     screenshot_urls: List[str] = []
     console_logs: List[str] = []
+    network_observations: List[Dict[str, Any]] = Field(default_factory=list)
     finding_id: Optional[str] = None
     risk_reason: Optional[str] = None
+    curiosity_breakdown: Optional[Dict[str, Any]] = None
+    regression_eligible: Optional[bool] = False
+    created_at: Optional[str] = None
 
 class RunSummaryResponse(BaseModel):
     id: str
@@ -130,6 +158,8 @@ class RunSummaryResponse(BaseModel):
     description: str
     status: str
     mode: str
+    test_mode: str = "universal_exploratory"
+    baseline_profile: str = "default"
     start_time: str
     end_time: Optional[str] = None
     duration_sec: float
@@ -146,6 +176,8 @@ class RegressionTestResponse(BaseModel):
     target_url: str
     original_run_id: Optional[str] = None
     original_test_id: Optional[str] = None
+    provenance: str = "passing_journey"
+    is_approved: bool = True
     steps_count: int
     assertions_count: int
     created_at: str
@@ -161,3 +193,27 @@ class RegressionRunResultResponse(BaseModel):
     duration_sec: float
     diff_summary: str
     executed_at: str
+
+class BaselineCreateRequest(BaseModel):
+    name: str
+    target_domain: str
+    category: str = "Business-rule Invariant"
+    source_type: str = "user_requirement" # user_requirement, business_rule, deterministic_invariant, known_good_reference, provisional_ai_hypothesis
+    version: str = "v1.0"
+    rule_definition: Dict[str, Any]
+    expected_state: Dict[str, Any]
+    is_approved: bool = True
+    notes: Optional[str] = None
+
+class BaselineResponse(BaseModel):
+    id: str
+    name: str
+    target_domain: str
+    category: str
+    source_type: str
+    version: str
+    rule_definition: Dict[str, Any]
+    expected_state: Dict[str, Any]
+    is_approved: bool
+    notes: Optional[str] = None
+    created_at: str

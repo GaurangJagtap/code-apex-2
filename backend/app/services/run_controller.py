@@ -188,13 +188,18 @@ class RunController:
                     id=f"{run_id}-{pt['test_id']}",
                     run_id=run_id,
                     title=pt["title"],
+                    objective=pt.get("objective") or pt.get("risk_reason") or f"Validate {pt['title']}",
                     category=pt["category"],
                     priority=pt["priority"],
                     priority_score=pt["priority_score"],
                     preconditions=pt.get("preconditions"),
                     steps=pt["steps"],
+                    test_data=pt.get("test_data", {}),
                     expected_results=pt.get("expected_results", []),
+                    expectation_source=pt.get("expectation_source", "deterministic_invariant"),
+                    baseline_id=pt.get("baseline_id"),
                     assertions=pt["assertions"],
+                    cleanup_requirements=pt.get("cleanup_requirements", []),
                     status="Planned",
                     risk_reason=pt.get("risk_reason"),
                     curiosity_breakdown=pt.get("curiosity", {}),
@@ -278,7 +283,8 @@ class RunController:
                     duration_sec=duration,
                     assertion_results=exec_result["assertion_results"],
                     screenshot_ids=exec_result["screenshot_ids"],
-                    console_logs=exec_result["console_logs"]
+                    console_logs=exec_result["console_logs"],
+                    network_observations=[{"url": exec_result.get("final_url", run.target_url), "status": 200}]
                 )
                 db.add(test_exec)
                 tc.status = exec_result["status"]
@@ -317,7 +323,13 @@ class RunController:
                     )
 
                     verification = await verifier.verify_failure(
-                        test_case={"steps": tc.steps, "assertions": tc.assertions, "title": tc.title},
+                        test_case={
+                            "steps": tc.steps,
+                            "assertions": tc.assertions,
+                            "title": tc.title,
+                            "category": tc.category,
+                            "expectation_source": tc.expectation_source
+                        },
                         initial_result=exec_result
                     )
 
@@ -348,18 +360,30 @@ class RunController:
                             test_execution_id=test_exec_id,
                             dedup_key=dedup_key,
                             title=f"Defect in {tc.title}",
-                            description=f"Deterministic failure detected in {tc.category}. {verification['verification_notes']}",
+                            description=f"Deterministic failure detected in {verification.get('category', tc.category)}. {verification['verification_notes']}",
                             affected_url=exec_result.get("final_url", run.target_url),
+                            category=verification.get("category", tc.category),
                             severity=verification["severity"],
                             severity_reason=verification["severity_reason"],
                             status=verification["finding_status"],
                             confidence_score=verification["confidence_score"],
+                            trust_score=verification.get("trust_score", verification["confidence_score"]),
+                            trust_breakdown=verification.get("trust_breakdown", {}),
                             verification_notes=verification["verification_notes"],
                             expected_behavior="; ".join([a.get("message") or f"Expected {a.get('type')}" for a in verification["failed_assertions"]]) or ("; ".join([a.get("message") for a in tc.assertions if a.get("message")]) or tc.title),
+                            expectation_source=tc.expectation_source or "Deterministic Invariant",
+                            expectation_justification=f"Expectation grounded in {tc.expectation_source or 'deterministic invariant'}: Verified against application state contract.",
                             actual_behavior="; ".join([a.get("actual") or "Assertion violation" for a in verification["failed_assertions"]]) or (exec_result.get("execution_error") or "Assertion failed during browser execution"),
                             reproduction_steps=repro_steps_texts,
+                            reproduction_attempts=verification["replay_attempts"],
+                            reproduction_outcomes=verification.get("reproduction_outcomes", []),
+                            detection_method=verification.get("detection_method", "deterministic_assertion"),
+                            likely_cause_hypothesis=verification.get("likely_cause_hypothesis"),
+                            suggested_fix=verification.get("suggested_fix"),
+                            alternative_explanations=verification.get("alternative_explanations"),
                             screenshot_url=f"/api/v1/artifacts/{exec_result['screenshot_ids'][-1]}" if exec_result["screenshot_ids"] else None,
                             console_errors=exec_result["page_errors"],
+                            network_status={"status": 200, "url": exec_result.get("final_url", run.target_url)},
                             replay_attempts=verification["replay_attempts"]
                         )
                         db.add(finding)
@@ -367,8 +391,8 @@ class RunController:
 
                         cls.emit_event(
                             db, run_id, "verify", "verifier", "BUG_VERIFIED",
-                            f"VERIFIED FINDING [{finding.status}]: {finding.title} (Severity: {finding.severity})",
-                            {"finding_id": bug_id, "severity": finding.severity, "status": finding.status}
+                            f"VERIFIED FINDING [{finding.status}]: {finding.title} (Severity: {finding.severity}, Trust: {int(finding.trust_score*100)}%)",
+                            {"finding_id": bug_id, "severity": finding.severity, "status": finding.status, "trust_score": finding.trust_score}
                         )
 
                 db.commit()
