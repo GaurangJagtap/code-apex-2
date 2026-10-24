@@ -72,6 +72,11 @@ class ScoutAgent:
             norm_url = f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
             
             if is_url_allowed(norm_url) and parsed.netloc == urlparse(self.base_url).netloc:
+                base_path = urlparse(self.base_url).path.rstrip('/')
+                # If target base URL has a specific subpath (e.g. /assessment), stay within that section
+                if base_path and not parsed.path.startswith(base_path):
+                    continue
+
                 valid_links.append(norm_url)
                 if norm_url not in self.visited_urls:
                     self.discovered_urls.add(norm_url)

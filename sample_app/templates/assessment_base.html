@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Candidate Assessment Platform{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body style="background: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+  <header style="background: white; border-bottom: 1px solid #e2e8f0; padding: 0.85rem 2rem; display: flex; align-items: center; justify-content: space-between;" role="banner">
+    <a href="/assessment" id="nav-assessment-brand" style="display: flex; items-center; gap: 0.5rem; text-decoration: none; color: #0f172a; font-weight: 700; font-size: 1.1rem;">
+      <span style="display: inline-flex; width: 28px; height: 28px; border-radius: 6px; background: #e0e7ff; color: #4338ca; align-items: center; justify-content: center; font-size: 1rem;">✦</span>
+      <span>iMocha Assessment Benchmark</span>
+    </a>
+    <nav style="display: flex; items-center; gap: 1rem; font-size: 0.85rem;" role="navigation" aria-label="Assessment Navigation">
+      <a href="/assessment" id="nav-candidate-portal" style="color: #475569; text-decoration: none; font-weight: 500;">Candidate Portal</a>
+      <a href="/assessment/recruiter/results" id="nav-recruiter-portal" style="color: #4338ca; text-decoration: none; font-weight: 600;">Recruiter Results</a>
+    </nav>
+  </header>
+
+  <main class="container" role="main" style="padding: 1.5rem 1rem;">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer style="text-align: center; padding: 2rem; color: #94a3b8; font-size: 0.85rem; border-top: 1px solid #e2e8f0; margin-top: 3rem;">
+    <p>Simulated Candidate Assessment Benchmark &copy; 2026 — Isolated Verification Platform.</p>
+  </footer>
+</body>
+</html>
