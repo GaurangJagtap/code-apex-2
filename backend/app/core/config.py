@@ -1,6 +1,6 @@
 import os
 from typing import List
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Autonomous AI QA Engineer"
@@ -39,14 +39,12 @@ class Settings(BaseSettings):
     
     # Safe Execution Boundaries
     MAX_PAGES_EXPLORE: int = 15
-    MAX_ACTIONS_PER_RUN: int = 50
+    MAX_ACTIONS_PER_RUN: int = 150
     MAX_RUN_DURATION_SEC: int = 300
     MAX_VERIFICATION_RETRIES: int = 2
     BROWSER_HEADLESS: bool = True
 
-    class Config:
-        env_file = ".env"
-        extra = "allow"
+    model_config = SettingsConfigDict(env_file=".env", extra="allow")
 
 settings = Settings()
 os.makedirs(settings.ARTIFACTS_DIR, exist_ok=True)

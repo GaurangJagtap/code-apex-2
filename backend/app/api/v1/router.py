@@ -1,11 +1,13 @@
 import os
+import json
 import uuid
 import datetime
-from typing import List, Optional
+import asyncio
+from typing import List, Optional, Literal
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, Response
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
-from backend.app.db.session import get_db, Base, engine
+from backend.app.db.session import get_db, Base, engine, SessionLocal
 from backend.app.db.models import (
     TestRun, ExploredPage, TestCase, TestExecution, BugFinding, Artifact, RunEvent,
     RegressionTest, RegressionExecution
@@ -169,6 +171,75 @@ def get_run_events(run_id: str, db: Session = Depends(get_db)):
         )
         for e in events
     ]
+
+@api_router.get("/runs/{run_id}/events/stream")
+async def stream_run_events(run_id: str):
+    """
+    Real-time Server-Sent Events (SSE) stream yielding live execution events as they occur.
+    Transports real backend events to the frontend in real time with reconnection support.
+    """
+    async def event_generator():
+        seen_event_ids = set()
+        retries_after_terminal = 0
+
+        while True:
+            db = SessionLocal()
+            try:
+                run = db.query(TestRun).filter(TestRun.id == run_id).first()
+                if not run:
+                    yield f"event: error\ndata: {json.dumps({'error': 'Run not found'})}\n\n"
+                    break
+
+                events = db.query(RunEvent).filter(
+                    RunEvent.run_id == run_id
+                ).order_by(RunEvent.timestamp.asc()).all()
+
+                for e in events:
+                    if e.id not in seen_event_ids:
+                        seen_event_ids.add(e.id)
+                        payload = {
+                            "id": e.id,
+                            "run_id": e.run_id,
+                            "timestamp": e.timestamp.isoformat(),
+                            "stage": e.stage,
+                            "agent_role": e.agent_role,
+                            "event_type": e.event_type,
+                            "message": e.message,
+                            "details": e.details or {},
+                            "run_status": run.status
+                        }
+                        yield f"data: {json.dumps(payload)}\n\n"
+
+                # Check if run reached a terminal state
+                if run.status in ("completed", "failed", "cancelled"):
+                    retries_after_terminal += 1
+                    # Ensure all trailing events were flushed before closing
+                    if retries_after_terminal >= 2:
+                        terminal_payload = {
+                            "stage": "terminal",
+                            "event_type": "RUN_TERMINAL",
+                            "message": f"Run execution finished with status: {run.status}",
+                            "run_status": run.status
+                        }
+                        yield f"data: {json.dumps(terminal_payload)}\n\n"
+                        break
+            except Exception as ex:
+                yield f"event: error\ndata: {json.dumps({'error': str(ex)})}\n\n"
+                break
+            finally:
+                db.close()
+
+            await asyncio.sleep(0.4)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @api_router.post("/runs/{run_id}/cancel")
 def cancel_run(run_id: str, db: Session = Depends(get_db)):
@@ -379,10 +450,17 @@ def get_artifact(artifact_id: str, db: Session = Depends(get_db)):
                 return FileResponse(full_path, media_type="image/png")
         raise HTTPException(status_code=404, detail="Artifact not found")
 
-    if not os.path.exists(art.file_path):
+    target_path = art.file_path if os.path.exists(art.file_path) else None
+    if not target_path and os.path.exists(settings.ARTIFACTS_DIR):
+        for f in os.listdir(settings.ARTIFACTS_DIR):
+            if artifact_id in f:
+                target_path = os.path.join(settings.ARTIFACTS_DIR, f)
+                break
+
+    if not target_path or not os.path.exists(target_path):
         raise HTTPException(status_code=404, detail="Artifact file missing from storage")
 
-    return FileResponse(art.file_path, media_type=art.content_type, filename=art.file_name)
+    return FileResponse(target_path, media_type=art.content_type or "image/png", filename=art.file_name)
 
 # ----------------- Regression Tests -----------------
 
@@ -650,7 +728,7 @@ async def execute_benchmark_suite(
 @api_router.get("/bugs/{bug_id}/export")
 def export_bug_report(
     bug_id: str,
-    format: str = Query("html", enum=["html", "json", "markdown"]),
+    format: Literal["html", "json", "markdown"] = Query("html"),
     db: Session = Depends(get_db)
 ):
     finding = db.query(BugFinding).filter(BugFinding.id == bug_id).first()
@@ -688,7 +766,7 @@ def export_bug_report(
 @api_router.get("/runs/{run_id}/export")
 def export_run_report(
     run_id: str,
-    format: str = Query("json", enum=["json", "junit"]),
+    format: Literal["json", "junit"] = Query("json"),
     db: Session = Depends(get_db)
 ):
     run = db.query(TestRun).filter(TestRun.id == run_id).first()

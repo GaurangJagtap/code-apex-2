@@ -1,19 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams, NavLink } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import {
   ListChecks,
   CheckCircle2,
   XCircle,
   AlertTriangle,
   Clock,
-  Play,
-  RotateCcw,
-  Camera,
-  ShieldCheck,
   Save,
-  ArrowRight,
-  ExternalLink,
-  ChevronRight,
   Sparkles,
   StopCircle
 } from 'lucide-react';
@@ -22,6 +15,7 @@ import {
   fetchRunTests,
   cancelRun,
   saveRegressionTest,
+  createRunEventSource,
   RunSummary,
   TestCaseExecution
 } from '../api/client';
@@ -46,7 +40,7 @@ export const TestRuns: React.FC = () => {
     });
   }, []);
 
-  // Poll tests for selected run
+  // Real-time tests loader with SSE subscription and polling fallback
   useEffect(() => {
     if (!selectedRunId) return;
 
@@ -67,10 +61,26 @@ export const TestRuns: React.FC = () => {
         .catch(console.error);
     };
 
+    // Initial load
     loadTests();
-    const interval = setInterval(loadTests, 2500);
+
+    // Subscribe to real-time events for instant update
+    const unsubscribeSSE = createRunEventSource(
+      selectedRunId,
+      (_event) => {
+        if (isMounted) loadTests();
+      },
+      (_status) => {
+        if (isMounted) loadTests();
+      }
+    );
+
+    // Light fallback interval
+    const interval = setInterval(loadTests, 3000);
+
     return () => {
       isMounted = false;
+      unsubscribeSSE();
       clearInterval(interval);
     };
   }, [selectedRunId]);

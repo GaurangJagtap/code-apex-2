@@ -4,10 +4,7 @@ import {
   Play,
   CheckCircle2,
   XCircle,
-  Clock,
-  ArrowRight,
   ShieldCheck,
-  AlertTriangle,
   RotateCcw,
   Sparkles
 } from 'lucide-react';

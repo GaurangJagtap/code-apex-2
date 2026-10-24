@@ -16,6 +16,7 @@ class Application(Base):
     created_at = Column(DateTime, default=get_utc_now)
 
 class TestRun(Base):
+    __test__ = False
     __tablename__ = "test_runs"
 
     id = Column(String(50), primary_key=True, index=True)
@@ -62,6 +63,7 @@ class ExploredPage(Base):
     run = relationship("TestRun", back_populates="pages")
 
 class TestCase(Base):
+    __test__ = False
     __tablename__ = "test_cases"
 
     id = Column(String(50), primary_key=True, index=True)
@@ -84,6 +86,7 @@ class TestCase(Base):
     executions = relationship("TestExecution", back_populates="test_case", cascade="all, delete-orphan")
 
 class TestExecution(Base):
+    __test__ = False
     __tablename__ = "test_executions"
 
     id = Column(String(50), primary_key=True, index=True)

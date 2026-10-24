@@ -40,6 +40,13 @@ export const Benchmark: React.FC = () => {
   const [defectsState, setDefectsState] = useState<Record<string, boolean>>({});
   const [togglingDefect, setTogglingDefect] = useState(false);
 
+  const loadRunBenchmark = (runId: string) => {
+    if (!runId) return;
+    fetchRunBenchmarkResults(runId)
+      .then(setBenchmarkReport)
+      .catch(() => setBenchmarkReport(null));
+  };
+
   // Load ground truth registry and run list
   useEffect(() => {
     Promise.all([
@@ -62,13 +69,6 @@ export const Benchmark: React.FC = () => {
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
-
-  const loadRunBenchmark = (runId: string) => {
-    if (!runId) return;
-    fetchRunBenchmarkResults(runId)
-      .then(setBenchmarkReport)
-      .catch(() => setBenchmarkReport(null));
-  };
 
   const handleRunSelect = (runId: string) => {
     setSelectedRunId(runId);

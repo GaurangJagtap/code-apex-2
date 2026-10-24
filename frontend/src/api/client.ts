@@ -258,4 +258,37 @@ export const fetchSampleAppDefects = () =>
 export const toggleSampleAppDefects = (params?: { enabled?: boolean; defect_id?: string }) =>
   axios.post('http://127.0.0.1:5001/api/defects/toggle', params || {}).then(res => res.data).catch(() => null);
 
+// Real-Time Event Stream via Server-Sent Events (SSE)
+export const createRunEventSource = (
+  runId: string,
+  onEvent: (event: RunEvent) => void,
+  onTerminal?: (status: string) => void,
+  onError?: (err: any) => void
+): (() => void) => {
+  const eventSource = new EventSource(`/api/v1/runs/${runId}/events/stream`);
+
+  eventSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.stage === 'terminal') {
+        if (onTerminal) onTerminal(data.run_status || 'completed');
+        eventSource.close();
+      } else {
+        onEvent(data as RunEvent);
+      }
+    } catch (err) {
+      console.error('Error parsing SSE event data:', err);
+    }
+  };
+
+  eventSource.onerror = (err) => {
+    if (onError) onError(err);
+    eventSource.close();
+  };
+
+  return () => {
+    eventSource.close();
+  };
+};
+
 export default api;

@@ -161,6 +161,26 @@ class RunController:
                 mode=run.mode
             )
 
+            # Report planning mode transparency
+            if run.mode == "ai":
+                if llm_provider.last_status == "success":
+                    cls.emit_event(
+                        db, run_id, "plan", "tester", "AI_PLANNING_SUCCESS",
+                        f"AI Planner successfully synthesized journeys via {llm_provider.provider} ({llm_provider.model}) in {llm_provider.last_latency_sec}s.",
+                        {"provider": llm_provider.provider, "model": llm_provider.model, "latency_sec": llm_provider.last_latency_sec}
+                    )
+                else:
+                    cls.emit_event(
+                        db, run_id, "plan", "tester", "AI_PLANNING_FALLBACK",
+                        f"AI planning was not completed ({llm_provider.last_error or llm_provider.last_status}). Utilized deterministic journey synthesis with Curiosity Engine ranking.",
+                        {"provider": llm_provider.provider, "reason": llm_provider.last_error or llm_provider.last_status}
+                    )
+            else:
+                cls.emit_event(
+                    db, run_id, "plan", "tester", "DETERMINISTIC_PLANNING",
+                    "Synthesized calibrated user journeys using deterministic domain heuristics and Curiosity Engine ranking."
+                )
+
             # Persist Planned Test Cases
             db_test_cases = []
             for pt in planned_tests:
@@ -199,8 +219,11 @@ class RunController:
             executor = BrowserExecutor(browser_session=browser_session)
             verifier = VerifierAgent(browser_executor=executor, max_retries=1)
 
-            max_actions = (run.boundaries or {}).get("max_actions", settings.MAX_ACTIONS_PER_RUN)
-            max_duration = (run.boundaries or {}).get("max_duration_sec", settings.MAX_RUN_DURATION_SEC)
+            # Execution boundaries: ensure budget permits full journey evaluation
+            configured_actions = (run.boundaries or {}).get("max_actions")
+            max_actions = configured_actions if configured_actions and configured_actions > 0 else settings.MAX_ACTIONS_PER_RUN
+            configured_duration = (run.boundaries or {}).get("max_duration_sec")
+            max_duration = configured_duration if configured_duration and configured_duration > 0 else settings.MAX_RUN_DURATION_SEC
             action_count = 0
 
             passed_cnt = 0

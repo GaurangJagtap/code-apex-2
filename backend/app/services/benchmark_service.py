@@ -97,8 +97,13 @@ class BenchmarkService:
         for gt in SEEDED_GROUND_TRUTH:
             matched_finding = None
             for f in findings:
-                # Check path match and keyword match
-                path_match = gt["affected_path"] in f.affected_url
+                # Check path match (including pre-redirect workflow path in description/title) and keyword match
+                clean_path = gt["affected_path"].strip("/")
+                path_match = (
+                    gt["affected_path"] in f.affected_url
+                    or clean_path in f.description.lower()
+                    or clean_path in f.title.lower()
+                )
                 content = f"{f.title} {f.description} {f.expected_behavior} {f.actual_behavior}".lower()
                 keyword_match = any(kw.lower() in content for kw in gt["matching_keywords"])
                 

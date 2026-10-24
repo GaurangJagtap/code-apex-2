@@ -11,9 +11,27 @@ import threading
 import time
 from sample_app.main import app as sample_app
 
+import socket
+
 @pytest.fixture(scope="session", autouse=True)
 def run_sample_app_server():
-    """Starts the sample app on port 5001 in a background thread."""
+    """Starts the sample app on port 5001 in a background thread if not already running."""
+    # Check if port 5001 is already open and responding
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.settimeout(0.5)
+        s.connect(("127.0.0.1", 5001))
+        port_open = True
+    except (socket.error, OSError):
+        port_open = False
+    finally:
+        s.close()
+
+    if port_open:
+        # Already running externally
+        yield
+        return
+
     server = uvicorn.Server(uvicorn.Config(sample_app, host="127.0.0.1", port=5001, log_level="warning"))
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()

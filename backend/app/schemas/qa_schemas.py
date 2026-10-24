@@ -16,6 +16,7 @@ class RunCreateRequest(BaseModel):
     password: Optional[str] = None
 
 class TestStepSchema(BaseModel):
+    __test__ = False
     action: str = Field(..., description="goto, click, fill, select, check, wait, assert, screenshot")
     selector: Optional[str] = None
     value: Optional[str] = None
@@ -36,6 +37,7 @@ class CuriosityBreakdown(BaseModel):
     reasoning: str = ""
 
 class TestCaseCreate(BaseModel):
+    __test__ = False
     test_id: str
     title: str
     category: str = "Functional"
@@ -48,6 +50,7 @@ class TestCaseCreate(BaseModel):
     regression_candidate: bool = True
 
 class TestPlanOutput(BaseModel):
+    __test__ = False
     rationale: str
     test_cases: List[TestCaseCreate]
 
@@ -101,6 +104,7 @@ class BugFindingResponse(BaseModel):
     created_at: str
 
 class TestExecutionResponse(BaseModel):
+    __test__ = False
     id: str
     test_case_id: str
     title: str

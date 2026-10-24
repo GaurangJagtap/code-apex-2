@@ -9,15 +9,13 @@ import {
   AlertTriangle,
   FileCode,
   MousePointer,
-  RotateCcw,
-  ArrowRight,
-  ShieldAlert,
-  Search
+  RotateCcw
 } from 'lucide-react';
 import {
   fetchRuns,
   fetchRunSiteMap,
   fetchRunEvents,
+  createRunEventSource,
   RunSummary,
   RunEvent
 } from '../api/client';
@@ -42,36 +40,57 @@ export const Exploration: React.FC = () => {
     });
   }, []);
 
-  // Poll site map and events for selected run
+  // Connect real-time Server-Sent Events (SSE) stream and initial site map load
   useEffect(() => {
     if (!selectedRunId) return;
 
     let isMounted = true;
-    const loadData = () => {
-      setLoading(true);
-      Promise.all([
-        fetchRunSiteMap(selectedRunId),
-        fetchRunEvents(selectedRunId)
-      ])
-        .then(([mapData, eventsData]) => {
-          if (!isMounted) return;
-          setSiteMap(mapData);
-          setEvents(eventsData);
-          if (mapData.nodes.length > 0 && !selectedNode) {
-            setSelectedNode(mapData.nodes[0]);
-          }
-        })
-        .catch(console.error)
-        .finally(() => {
-          if (isMounted) setLoading(false);
-        });
-    };
 
-    loadData();
-    const interval = setInterval(loadData, 3000);
+    // Initial fetch of site map and history
+    fetchRunSiteMap(selectedRunId)
+      .then(mapData => {
+        if (!isMounted) return;
+        setSiteMap(mapData);
+        if (mapData.nodes.length > 0 && !selectedNode) {
+          setSelectedNode(mapData.nodes[0]);
+        }
+      })
+      .catch(console.error);
+
+    fetchRunEvents(selectedRunId)
+      .then(eventsData => {
+        if (!isMounted) return;
+        setEvents(eventsData);
+      })
+      .catch(console.error);
+
+    // Live real-time event streaming via SSE
+    const unsubscribeSSE = createRunEventSource(
+      selectedRunId,
+      (newEvent) => {
+        if (!isMounted) return;
+        setEvents(prev => {
+          if (prev.some(e => e.id === newEvent.id)) return prev;
+          return [...prev, newEvent];
+        });
+        // If new pages discovered or run progresses, refresh site map
+        if (newEvent.stage === 'explore' || newEvent.event_type === 'PAGES_EXPLORED') {
+          fetchRunSiteMap(selectedRunId).then(mapData => {
+            if (isMounted) setSiteMap(mapData);
+          });
+        }
+      },
+      (_status) => {
+        // Run reached terminal state: final refresh of site map
+        if (isMounted) {
+          fetchRunSiteMap(selectedRunId).then(setSiteMap);
+        }
+      }
+    );
+
     return () => {
       isMounted = false;
-      clearInterval(interval);
+      unsubscribeSSE();
     };
   }, [selectedRunId]);
 
