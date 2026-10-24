@@ -43,7 +43,7 @@ def main():
 
     print("[2/3] Starting FastAPI Autonomous QA Backend on http://127.0.0.1:8000...")
     backend_proc = subprocess.Popen(
-        [VENV_PYTHON, "-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000", "--reload"],
+        [VENV_PYTHON, "-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", "8000"],
         cwd=ROOT_DIR
     )
 
