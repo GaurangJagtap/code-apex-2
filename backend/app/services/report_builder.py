@@ -197,7 +197,7 @@ class ReportBuilder:
 - **Verification Confidence:** {finding.get('confidence_score', 0.95) * 100:.0f}%
 
 ---
-*Generated autonomously by Autonomous AI QA Engineer (Code Apex 3.0)*
+*Generated autonomously by Autonomous AI QA Engineer*
 """
         return md
 

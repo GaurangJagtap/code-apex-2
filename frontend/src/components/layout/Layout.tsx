@@ -54,8 +54,8 @@ export const Layout: React.FC = () => {
               <ShieldCheck className="w-5 h-5 text-emerald-300" />
             </div>
             <div>
-              <div className="font-bold text-sm tracking-tight text-[#064e3b]">Autonomous QA</div>
-              <div className="text-[11px] text-[#64748b] font-medium">Code Apex 3.0</div>
+              <div className="font-bold text-sm tracking-tight text-[#064e3b]">Autonomous AI</div>
+              <div className="text-[11px] text-[#047857] font-semibold">QA Engineer</div>
             </div>
           </div>
         </div>

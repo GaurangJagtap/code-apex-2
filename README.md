@@ -1,5 +1,5 @@
 # Autonomous AI QA Engineer
-### CODE APEX 3.0 | iMocha Track | Problem Statement IM-02
+### iMocha Track | Problem Statement IM-02
 
 > **"Explore &rarr; Understand &rarr; Plan &rarr; Execute &rarr; Verify &rarr; Report &rarr; Learn"**
 
@@ -294,5 +294,5 @@ When configured, the Tester Agent queries the model to synthesize structured tes
 
 ## License
 
-Developed for **CODE APEX 3.0 Hackathon | iMocha Track | Problem Statement IM-02**.
+Developed for **iMocha Track | Problem Statement IM-02**.
 All synthetic data and demonstration targets are for local verification only.

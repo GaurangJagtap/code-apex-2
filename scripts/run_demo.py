@@ -33,7 +33,7 @@ if sys.platform == "win32":
 
 def main():
     print("=" * 70)
-    print("  AUTONOMOUS AI QA ENGINEER — CODE APEX 3.0 (iMocha Track IM-02)")
+    print("  AUTONOMOUS AI QA ENGINEER (iMocha Track IM-02)")
     print("=" * 70)
     print("[1/3] Starting Controlled Sample E-Commerce App on http://127.0.0.1:5001...")
     sample_proc = subprocess.Popen(
