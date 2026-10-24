@@ -47,7 +47,20 @@ export const Baselines: React.FC = () => {
       if (domainFilter !== 'all') params.domain = domainFilter;
       if (categoryFilter !== 'all') params.category = categoryFilter;
       const data = await fetchBaselines(params);
-      setBaselines(data);
+      const normalized: BehavioralBaseline[] = (Array.isArray(data) ? data : []).map((raw: any) => ({
+        id: raw.id || '',
+        title: raw.title || raw.name || 'Behavioral Invariant Rule',
+        domain: raw.domain || raw.target_domain || 'general',
+        category: raw.category || 'General Invariant',
+        rule_type: raw.rule_type || raw.rule_definition?.rule_type || raw.source_type || 'invariant',
+        version: raw.version || 'v1.0',
+        source: raw.source || raw.source_type || 'deterministic_invariant',
+        expected_behavior: raw.expected_behavior || (typeof raw.expected_state === 'object' ? JSON.stringify(raw.expected_state) : raw.expected_state) || 'Expected deterministic state contract.',
+        invariant_rule: raw.invariant_rule || raw.rule_definition?.rule || undefined,
+        is_approved: Boolean(raw.is_approved),
+        created_at: raw.created_at || new Date().toISOString()
+      }));
+      setBaselines(normalized);
     } catch (err) {
       console.error('Failed to load baselines', err);
     } finally {
@@ -253,10 +266,10 @@ export const Baselines: React.FC = () => {
 
                 <div className="flex items-center gap-2 text-[10px]">
                   <span className="bg-[hsl(var(--secondary))] text-[hsl(var(--foreground))] px-2 py-0.5 rounded font-medium border border-[hsl(var(--border))]">
-                    {b.domain.toUpperCase()}
+                    {(b.domain || 'general').toUpperCase()}
                   </span>
                   <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded font-medium border border-indigo-200">
-                    {b.rule_type}
+                    {b.rule_type || 'invariant'}
                   </span>
                   <span className="text-[hsl(var(--muted-foreground))]">
                     Source: <strong className="text-slate-700">{b.source}</strong>
