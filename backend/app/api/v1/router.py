@@ -420,6 +420,23 @@ def list_test_cases(
         exec_item = executions.get(t.id)
         finding_item = findings.get(exec_item.id) if exec_item else None
         screenshot_urls = [f"/api/v1/artifacts/{s_id}" for s_id in (exec_item.screenshot_ids if exec_item else [])]
+        status = exec_item.status if (exec_item and exec_item.status) else t.status
+
+        execution_dict = {
+            "id": exec_item.id if exec_item else f"exec-{t.id}",
+            "status": status,
+            "duration_sec": exec_item.duration_sec if exec_item else 0.0,
+            "steps": t.steps or [],
+            "assertions": t.assertions or [],
+            "assertion_results": exec_item.assertion_results if exec_item else [],
+            "actual_observations": exec_item.actual_observations if exec_item else None,
+            "network_observations": getattr(exec_item, "network_observations", []) or [],
+            "console_logs": exec_item.console_logs if exec_item else [],
+            "screenshot_urls": screenshot_urls,
+            "finding_id": finding_item.id if finding_item else None,
+            "regression_eligible": t.regression_eligible,
+            "curiosity_breakdown": t.curiosity_breakdown
+        }
 
         results.append({
             "id": t.id,
@@ -430,7 +447,7 @@ def list_test_cases(
             "category": t.category,
             "priority": t.priority,
             "priority_score": t.priority_score,
-            "status": t.status,
+            "status": status,
             "duration_sec": exec_item.duration_sec if exec_item else 0.0,
             "retry_count": exec_item.retry_count if exec_item else 0,
             "preconditions": t.preconditions,
@@ -447,7 +464,14 @@ def list_test_cases(
             "risk_reason": t.risk_reason,
             "curiosity_breakdown": t.curiosity_breakdown,
             "regression_eligible": t.regression_eligible,
-            "created_at": t.created_at.isoformat() if t.created_at else None
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+            "execution": execution_dict,
+            "related_bugs": [{
+                "id": finding_item.id,
+                "title": finding_item.title,
+                "severity": finding_item.severity,
+                "status": finding_item.status
+            }] if finding_item else []
         })
 
     return results
@@ -460,6 +484,23 @@ def get_test_case_detail(test_id: str, db: Session = Depends(get_db)):
     exec_item = db.query(TestExecution).filter(TestExecution.test_case_id == t.id).first()
     finding_item = db.query(BugFinding).filter(BugFinding.test_execution_id == (exec_item.id if exec_item else "")).first()
     screenshot_urls = [f"/api/v1/artifacts/{s_id}" for s_id in (exec_item.screenshot_ids if exec_item else [])]
+    status = exec_item.status if (exec_item and exec_item.status) else t.status
+
+    execution_dict = {
+        "id": exec_item.id if exec_item else f"exec-{t.id}",
+        "status": status,
+        "duration_sec": exec_item.duration_sec if exec_item else 0.0,
+        "steps": t.steps or [],
+        "assertions": t.assertions or [],
+        "assertion_results": exec_item.assertion_results if exec_item else [],
+        "actual_observations": exec_item.actual_observations if exec_item else None,
+        "network_observations": getattr(exec_item, "network_observations", []) or [],
+        "console_logs": exec_item.console_logs if exec_item else [],
+        "screenshot_urls": screenshot_urls,
+        "finding_id": finding_item.id if finding_item else None,
+        "regression_eligible": t.regression_eligible,
+        "curiosity_breakdown": t.curiosity_breakdown
+    }
 
     return {
         "id": t.id,
@@ -470,7 +511,7 @@ def get_test_case_detail(test_id: str, db: Session = Depends(get_db)):
         "category": t.category,
         "priority": t.priority,
         "priority_score": t.priority_score,
-        "status": t.status,
+        "status": status,
         "duration_sec": exec_item.duration_sec if exec_item else 0.0,
         "retry_count": exec_item.retry_count if exec_item else 0,
         "preconditions": t.preconditions,
@@ -487,7 +528,14 @@ def get_test_case_detail(test_id: str, db: Session = Depends(get_db)):
         "risk_reason": t.risk_reason,
         "curiosity_breakdown": t.curiosity_breakdown,
         "regression_eligible": t.regression_eligible,
-        "created_at": t.created_at.isoformat() if t.created_at else None
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "execution": execution_dict,
+        "related_bugs": [{
+            "id": finding_item.id,
+            "title": finding_item.title,
+            "severity": finding_item.severity,
+            "status": finding_item.status
+        }] if finding_item else []
     }
 
 # ----------------- Exploration & Site Map -----------------

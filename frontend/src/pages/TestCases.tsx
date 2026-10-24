@@ -339,8 +339,13 @@ export const TestCases: React.FC = () => {
               <tbody className="divide-y divide-[hsl(var(--border))]">
                 {testCases.map(tc => {
                   const exec = tc.execution;
-                  const passedAssertions = exec?.assertion_results?.filter(a => a.passed).length || 0;
-                  const totalAssertions = exec?.assertion_results?.length || exec?.assertions?.length || 0;
+                  const status = exec?.status || (tc as any).status || 'Pending';
+                  const assertionResults = (exec?.assertion_results && exec.assertion_results.length > 0)
+                    ? exec.assertion_results
+                    : ((tc as any).assertion_results || []);
+                  const totalAssertions = assertionResults.length || exec?.assertions?.length || (tc as any).assertions?.length || 0;
+                  const passedAssertions = assertionResults.filter((a: any) => a.passed).length;
+                  const durationSec = exec?.duration_sec ?? (tc as any).duration_sec ?? 0;
 
                   return (
                     <tr
@@ -373,14 +378,14 @@ export const TestCases: React.FC = () => {
                           {tc.priority}
                         </span>
                       </td>
-                      <td className="py-3 px-4">{getStatusBadge(exec?.status)}</td>
+                      <td className="py-3 px-4">{getStatusBadge(status)}</td>
                       <td className="py-3 px-4">
                         <span className="font-mono text-xs">
                           {passedAssertions}/{totalAssertions}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-[hsl(var(--muted-foreground))] font-mono">
-                        {exec?.duration_sec ? `${exec.duration_sec.toFixed(1)}s` : '—'}
+                        {durationSec ? `${durationSec.toFixed(1)}s` : '0.0s'}
                       </td>
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
@@ -417,219 +422,253 @@ export const TestCases: React.FC = () => {
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white border border-[hsl(var(--border))] rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
             {/* Modal Header */}
-            <div className="p-5 border-b border-[hsl(var(--border))] flex items-start justify-between bg-[hsl(var(--secondary))]/30">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-xs text-[hsl(var(--muted-foreground))]">{activeTestCase.id}</span>
-                  {getStatusBadge(activeTestCase.execution?.status)}
-                  {getSourceBadge(activeTestCase.expectation_source)}
-                </div>
-                <h2 className="text-lg font-bold text-[hsl(var(--foreground))] tracking-tight">
-                  {activeTestCase.title}
-                </h2>
-                <div className="text-xs text-[hsl(var(--muted-foreground))]">
-                  Category: <span className="font-medium text-[hsl(var(--foreground))]">{activeTestCase.category}</span> • Priority:{' '}
-                  <span className="font-medium text-[hsl(var(--foreground))]">{activeTestCase.priority}</span>
-                </div>
-              </div>
-              <button
-                onClick={() => setActiveTestCase(null)}
-                className="p-1.5 rounded-lg hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition text-sm"
-              >
-                ✕
-              </button>
-            </div>
+            {(() => {
+              const exec = activeTestCase.execution;
+              const status = exec?.status || (activeTestCase as any).status || 'Pending';
+              const steps = (Array.isArray(exec?.steps) && exec.steps.length > 0)
+                ? exec.steps
+                : (Array.isArray((activeTestCase as any).steps) ? (activeTestCase as any).steps : []);
+              const assertionResults = (Array.isArray(exec?.assertion_results) && exec.assertion_results.length > 0)
+                ? exec.assertion_results
+                : (Array.isArray((activeTestCase as any).assertion_results) ? (activeTestCase as any).assertion_results : []);
+              const assertions = (Array.isArray(exec?.assertions) && exec.assertions.length > 0)
+                ? exec.assertions
+                : (Array.isArray((activeTestCase as any).assertions) ? (activeTestCase as any).assertions : []);
+              const durationSec = exec?.duration_sec ?? (activeTestCase as any).duration_sec ?? 0;
+              const curiosity = exec?.curiosity_breakdown || (activeTestCase as any).curiosity_breakdown;
+              const networkObs = (Array.isArray(exec?.network_observations) && exec.network_observations.length > 0)
+                ? exec.network_observations
+                : (Array.isArray((activeTestCase as any).network_observations) ? (activeTestCase as any).network_observations : []);
+              const relatedBugs = (Array.isArray(activeTestCase.related_bugs) && activeTestCase.related_bugs.length > 0)
+                ? activeTestCase.related_bugs
+                : ((activeTestCase as any).finding_id ? [{ id: (activeTestCase as any).finding_id, title: activeTestCase.title, severity: activeTestCase.priority, status: 'Confirmed' }] : []);
 
-            {/* Modal Body */}
-            <div className="p-6 overflow-y-auto space-y-6 text-xs">
-              {/* Objective & Why It Matters */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3.5 rounded-xl border border-[hsl(var(--border))] bg-slate-50/50 space-y-1">
-                  <div className="font-semibold text-[hsl(var(--foreground))] flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
-                    Objective & Autonomous Reasoning
-                  </div>
-                  <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                    {activeTestCase.objective || activeTestCase.title}
-                  </p>
-                  {activeTestCase.why_it_matters && (
-                    <div className="mt-2 text-[11px] text-slate-600 border-t border-slate-200 pt-1.5">
-                      <span className="font-semibold">Why this matters:</span> {activeTestCase.why_it_matters}
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-3.5 rounded-xl border border-[hsl(var(--border))] bg-slate-50/50 space-y-1">
-                  <div className="font-semibold text-[hsl(var(--foreground))] flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
-                    Expected Behavior & Provenance
-                  </div>
-                  <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
-                    {activeTestCase.expected_result || 'Expected behavior matches documented invariant specification.'}
-                  </p>
-                  <div className="mt-2 text-[11px] text-slate-600 border-t border-slate-200 pt-1.5">
-                    <span className="font-semibold">Expectation Source:</span>{' '}
-                    <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">
-                      {activeTestCase.expectation_source || 'deterministic_invariant'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Curiosity Breakdown if available */}
-              {activeTestCase.execution?.curiosity_breakdown && (
-                <div className="p-3 rounded-lg border border-purple-200 bg-purple-50/40 flex items-center justify-between text-purple-900">
-                  <div className="flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-purple-600" />
-                    <div>
-                      <div className="font-semibold text-xs">Curiosity Engine Prioritization</div>
-                      <div className="text-[11px] text-purple-700">
-                        {activeTestCase.execution.curiosity_breakdown.reasoning}
+              return (
+                <>
+                  <div className="p-5 border-b border-[hsl(var(--border))] flex items-start justify-between bg-[hsl(var(--secondary))]/30">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs text-[hsl(var(--muted-foreground))]">{activeTestCase.id}</span>
+                        {getStatusBadge(status)}
+                        {getSourceBadge(activeTestCase.expectation_source)}
+                      </div>
+                      <h2 className="text-lg font-bold text-[hsl(var(--foreground))] tracking-tight">
+                        {activeTestCase.title}
+                      </h2>
+                      <div className="text-xs text-[hsl(var(--muted-foreground))]">
+                        Category: <span className="font-medium text-[hsl(var(--foreground))]">{activeTestCase.category}</span> • Priority:{' '}
+                        <span className="font-medium text-[hsl(var(--foreground))]">{activeTestCase.priority}</span>
                       </div>
                     </div>
+                    <button
+                      onClick={() => setActiveTestCase(null)}
+                      className="p-1.5 rounded-lg hover:bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition text-sm"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <div className="text-right">
-                    <div className="font-mono font-bold text-sm">
-                      {activeTestCase.execution.curiosity_breakdown.priority_score.toFixed(2)}
-                    </div>
-                    <div className="text-[10px] text-purple-600">Priority Score</div>
-                  </div>
-                </div>
-              )}
 
-              {/* Step Execution Timeline */}
-              <div className="space-y-3">
-                <div className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center justify-between">
-                  <span>Ordered Execution Steps ({activeTestCase.execution?.steps?.length || 0})</span>
-                  <span className="text-[11px] font-normal text-[hsl(var(--muted-foreground))]">
-                    Duration: {activeTestCase.execution?.duration_sec?.toFixed(1) || 0}s
-                  </span>
-                </div>
-
-                <div className="space-y-2 border-l-2 border-[hsl(var(--border))] ml-2 pl-4">
-                  {activeTestCase.execution?.steps && activeTestCase.execution.steps.length > 0 ? (
-                    activeTestCase.execution.steps.map((st, idx) => (
-                      <div key={idx} className="relative group">
-                        <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[hsl(var(--accent))] border-2 border-white ring-1 ring-[hsl(var(--accent))]" />
-                        <div className="p-2.5 rounded-lg border border-[hsl(var(--border))] bg-white hover:border-[hsl(var(--accent))]/50 transition">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono font-semibold text-xs text-[hsl(var(--foreground))] uppercase">
-                              Step {idx + 1}: {st.action}
-                            </span>
-                            {st.selector && (
-                              <code className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono truncate max-w-xs">
-                                {st.selector}
-                              </code>
-                            )}
+                  {/* Modal Body */}
+                  <div className="p-6 overflow-y-auto space-y-6 text-xs">
+                    {/* Objective & Why It Matters */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-3.5 rounded-xl border border-[hsl(var(--border))] bg-slate-50/50 space-y-1">
+                        <div className="font-semibold text-[hsl(var(--foreground))] flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-[hsl(var(--accent))]" />
+                          Objective & Autonomous Reasoning
+                        </div>
+                        <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                          {activeTestCase.objective || activeTestCase.title}
+                        </p>
+                        {activeTestCase.why_it_matters && (
+                          <div className="mt-2 text-[11px] text-slate-600 border-t border-slate-200 pt-1.5">
+                            <span className="font-semibold">Why this matters:</span> {activeTestCase.why_it_matters}
                           </div>
-                          <div className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{st.description}</div>
-                          {st.value && (
-                            <div className="text-[11px] text-slate-600 font-mono mt-1 bg-slate-50 p-1 rounded">
-                              Input value: "{st.value}"
-                            </div>
-                          )}
+                        )}
+                      </div>
+
+                      <div className="p-3.5 rounded-xl border border-[hsl(var(--border))] bg-slate-50/50 space-y-1">
+                        <div className="font-semibold text-[hsl(var(--foreground))] flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                          Expected Behavior & Provenance
+                        </div>
+                        <p className="text-[hsl(var(--muted-foreground))] leading-relaxed">
+                          {activeTestCase.expected_result || 'Expected behavior matches documented invariant specification.'}
+                        </p>
+                        <div className="mt-2 text-[11px] text-slate-600 border-t border-slate-200 pt-1.5">
+                          <span className="font-semibold">Expectation Source:</span>{' '}
+                          <span className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">
+                            {activeTestCase.expectation_source || 'deterministic_invariant'}
+                          </span>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-slate-400 italic">No individual steps recorded for this test case.</div>
-                  )}
-                </div>
-              </div>
+                    </div>
 
-              {/* Assertion Results */}
-              <div className="space-y-3">
-                <div className="font-semibold text-sm text-[hsl(var(--foreground))]">
-                  Deterministic Invariants & Assertions (
-                  {activeTestCase.execution?.assertion_results?.length || 0})
-                </div>
+                    {/* Curiosity Breakdown if available */}
+                    {curiosity && (
+                      <div className="p-3 rounded-lg border border-purple-200 bg-purple-50/40 flex items-center justify-between text-purple-900">
+                        <div className="flex items-center gap-2">
+                          <Activity className="w-4 h-4 text-purple-600" />
+                          <div>
+                            <div className="font-semibold text-xs">Curiosity Engine Prioritization</div>
+                            <div className="text-[11px] text-purple-700">
+                              {curiosity.reasoning || 'Targeted test synthesized based on state uncertainty and coverage gap.'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="font-mono font-bold text-sm">
+                            {typeof curiosity.priority_score === 'number' ? curiosity.priority_score.toFixed(2) : '0.85'}
+                          </div>
+                          <div className="text-[10px] text-purple-600">Priority Score</div>
+                        </div>
+                      </div>
+                    )}
 
-                <div className="space-y-2">
-                  {activeTestCase.execution?.assertion_results &&
-                  activeTestCase.execution.assertion_results.length > 0 ? (
-                    activeTestCase.execution.assertion_results.map((asr, idx) => (
-                      <div
-                        key={idx}
-                        className={`p-3 rounded-lg border flex items-start gap-3 ${
-                          asr.passed
-                            ? 'bg-emerald-50/50 border-emerald-200'
-                            : 'bg-rose-50/50 border-rose-200'
-                        }`}
-                      >
-                        {asr.passed ? (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    {/* Step Execution Timeline */}
+                    <div className="space-y-3">
+                      <div className="font-semibold text-sm text-[hsl(var(--foreground))] flex items-center justify-between">
+                        <span>Ordered Execution Steps ({steps.length})</span>
+                        <span className="text-[11px] font-normal text-[hsl(var(--muted-foreground))]">
+                          Duration: {durationSec ? durationSec.toFixed(1) : '0.0'}s
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 border-l-2 border-[hsl(var(--border))] ml-2 pl-4">
+                        {steps.length > 0 ? (
+                          steps.map((st: any, idx: number) => (
+                            <div key={idx} className="relative group">
+                              <div className="absolute -left-[21px] top-1 w-2.5 h-2.5 rounded-full bg-[hsl(var(--accent))] border-2 border-white ring-1 ring-[hsl(var(--accent))]" />
+                              <div className="p-2.5 rounded-lg border border-[hsl(var(--border))] bg-white hover:border-[hsl(var(--accent))]/50 transition">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono font-semibold text-xs text-[hsl(var(--foreground))] uppercase">
+                                    Step {idx + 1}: {st.action}
+                                  </span>
+                                  {st.selector && (
+                                    <code className="text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono truncate max-w-xs">
+                                      {st.selector}
+                                    </code>
+                                  )}
+                                </div>
+                                <div className="text-xs text-[hsl(var(--muted-foreground))] mt-1">{st.description}</div>
+                                {st.value && (
+                                  <div className="text-[11px] text-slate-600 font-mono mt-1 bg-slate-50 p-1 rounded">
+                                    Input value: "{st.value}"
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))
                         ) : (
-                          <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                          <div className="text-xs text-slate-400 italic">No individual steps recorded for this test case.</div>
                         )}
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-mono font-semibold text-xs text-[hsl(var(--foreground))]">
-                              {asr.type}
-                            </span>
-                            <span
-                              className={`text-[10px] font-bold uppercase ${
-                                asr.passed ? 'text-emerald-700' : 'text-rose-700'
+                      </div>
+                    </div>
+
+                    {/* Assertion Results */}
+                    <div className="space-y-3">
+                      <div className="font-semibold text-sm text-[hsl(var(--foreground))]">
+                        Deterministic Invariants & Assertions ({assertionResults.length || assertions.length})
+                      </div>
+
+                      <div className="space-y-2">
+                        {assertionResults.length > 0 ? (
+                          assertionResults.map((asr: any, idx: number) => (
+                            <div
+                              key={idx}
+                              className={`p-3 rounded-lg border flex items-start gap-3 ${
+                                asr.passed
+                                  ? 'bg-emerald-50/50 border-emerald-200'
+                                  : 'bg-rose-50/50 border-rose-200'
                               }`}
                             >
-                              {asr.passed ? 'Assertion Met' : 'Assertion Violated'}
-                            </span>
-                          </div>
-                          <div className="text-xs text-[hsl(var(--foreground))]">{asr.message}</div>
-                          {asr.actual && (
-                            <div className="text-[11px] font-mono text-[hsl(var(--muted-foreground))] bg-white/70 p-1 rounded border border-slate-200">
-                              Actual observed: {asr.actual}
+                              {asr.passed ? (
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                              ) : (
+                                <XCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                              )}
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono font-semibold text-xs text-[hsl(var(--foreground))]">
+                                    {asr.type}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-bold uppercase ${
+                                      asr.passed ? 'text-emerald-700' : 'text-rose-700'
+                                    }`}
+                                  >
+                                    {asr.passed ? 'Assertion Met' : 'Assertion Violated'}
+                                  </span>
+                                </div>
+                                <div className="text-xs text-[hsl(var(--foreground))]">{asr.message}</div>
+                                {asr.actual && (
+                                  <div className="text-[11px] font-mono text-[hsl(var(--muted-foreground))] bg-white/70 p-1 rounded border border-slate-200">
+                                    Actual observed: {asr.actual}
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          )}
+                          ))
+                        ) : assertions.length > 0 ? (
+                          assertions.map((asr: any, idx: number) => (
+                            <div key={idx} className="p-3 rounded-lg border border-[hsl(var(--border))] bg-slate-50 flex items-start gap-3">
+                              <CheckCircle2 className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
+                              <div className="flex-1">
+                                <span className="font-mono font-semibold text-xs">{asr.type}</span>
+                                <div className="text-xs text-slate-600">{asr.message || asr.expected}</div>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-xs text-slate-400 italic">No assertions recorded.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Network Observations & Console Logs */}
+                    {networkObs.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="font-semibold text-xs text-[hsl(var(--foreground))] flex items-center gap-1.5">
+                          <Terminal className="w-3.5 h-3.5 text-slate-600" />
+                          Network Activity & API Status
+                        </div>
+                        <div className="bg-slate-900 text-slate-200 p-3 rounded-lg font-mono text-[11px] max-h-36 overflow-y-auto space-y-1">
+                          {networkObs.map((net: any, idx: number) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <span className="text-emerald-400 font-bold">{net.status || 'REQ'}</span>
+                              <span className="text-slate-400">{net.method || 'GET'}</span>
+                              <span className="truncate">{net.url}</span>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <div className="text-xs text-slate-400 italic">No assertions recorded.</div>
-                  )}
-                </div>
-              </div>
+                    )}
 
-              {/* Network Observations & Console Logs */}
-              {Array.isArray(activeTestCase.execution?.network_observations) && activeTestCase.execution.network_observations.length > 0 && (
-                <div className="space-y-2">
-                  <div className="font-semibold text-xs text-[hsl(var(--foreground))] flex items-center gap-1.5">
-                    <Terminal className="w-3.5 h-3.5 text-slate-600" />
-                    Network Activity & API Status
-                  </div>
-                  <div className="bg-slate-900 text-slate-200 p-3 rounded-lg font-mono text-[11px] max-h-36 overflow-y-auto space-y-1">
-                    {activeTestCase.execution.network_observations.map((net, idx) => (
-                      <div key={idx} className="flex items-center gap-2">
-                        <span className="text-emerald-400 font-bold">{net.status || 'REQ'}</span>
-                        <span className="text-slate-400">{net.method || 'GET'}</span>
-                        <span className="truncate">{net.url}</span>
+                    {/* Related Bugs or Saved Regression */}
+                    {relatedBugs.length > 0 && (
+                      <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2">
+                        <div className="font-semibold text-xs text-rose-900 flex items-center gap-1.5">
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          Associated Bug Finding
+                        </div>
+                        {relatedBugs.map((bug: any) => (
+                          <div key={bug.id} className="text-xs text-rose-800 flex items-center justify-between">
+                            <span>{bug.title} ({bug.severity})</span>
+                            <a
+                              href={`/bugs/${bug.id}`}
+                              className="text-rose-700 hover:underline flex items-center gap-1 font-semibold"
+                            >
+                              <span>View Bug Finding</span>
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                </div>
-              )}
-
-              {/* Related Bugs or Saved Regression */}
-              {Array.isArray(activeTestCase.related_bugs) && activeTestCase.related_bugs.length > 0 && (
-                <div className="p-3 rounded-xl border border-rose-200 bg-rose-50/40 space-y-2">
-                  <div className="font-semibold text-xs text-rose-900 flex items-center gap-1.5">
-                    <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                    Associated Bug Finding
-                  </div>
-                  {activeTestCase.related_bugs.map(bug => (
-                    <div key={bug.id} className="text-xs text-rose-800 flex items-center justify-between">
-                      <span>{bug.title} ({bug.severity})</span>
-                      <a
-                        href={`/bugs/${bug.id}`}
-                        className="text-rose-700 hover:underline flex items-center gap-1 font-semibold"
-                      >
-                        <span>View Bug Finding</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                </>
+              );
+            })()}
 
             {/* Modal Footer */}
             <div className="p-4 border-t border-[hsl(var(--border))] bg-white flex items-center justify-between">
