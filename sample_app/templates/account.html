@@ -48,10 +48,10 @@
           {% for ord in orders %}
           <tr id="order-row-{{ ord.id }}">
             <td><a href="/order-confirmation/{{ ord.id }}" style="color: #047857; font-weight: 600;">{{ ord.id }}</a></td>
-            <td>{{ ord.created_at[:10] }}</td>
-            <td>{{ ord.fullname }}</td>
-            <td>${{ "%.2f"|format(ord.total) }}</td>
-            <td><span class="badge" style="background: #10b981;">Confirmed</span></td>
+            <td>{{ (ord.created_at or ord.date or '2026-03-01')[:10] }}</td>
+            <td>{{ ord.fullname or (user.name if user else 'Customer') }}</td>
+            <td>{% if ord.total is number %}${{ "%.2f"|format(ord.total) }}{% else %}{{ ord.total }}{% endif %}</td>
+            <td><span class="badge" style="background: #10b981;">{{ ord.status or 'Confirmed' }}</span></td>
           </tr>
           {% endfor %}
         </tbody>
